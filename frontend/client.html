@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reserva tu Hora — Barbería Legendaria</title>
+    
+    <!-- FontAwesome para iconografía clásica -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Hoja de estilos -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <div class="app-wrapper">
+        
+        <!-- CABECERA -->
+        <header>
+            <div class="brand">
+                <div class="brand-icon"><i class="fa-solid fa-scissors"></i></div>
+                <div class="brand-text">
+                    <h1>Legend <span>Barber</span></h1>
+                    <p>Cortes & Estilo Premium</p>
+                </div>
+            </div>
+            <div>
+                <a href="admin.html" class="btn btn-outline" target="_blank">
+                    <i class="fa-solid fa-user-lock"></i> Panel Administrador
+                </a>
+            </div>
+        </header>
+
+        <!-- WIZARD CARD -->
+        <main class="glass-card">
+            
+            <!-- Indicador de pasos -->
+            <div class="wizard-progress-bar">
+                <div class="progress-line-active" id="progress-line"></div>
+                
+                <div class="wizard-step-node active" id="step-node-1">
+                    <div class="step-circle">1</div>
+                    <div class="step-label">Barbero</div>
+                </div>
+                <div class="wizard-step-node" id="step-node-2">
+                    <div class="step-circle">2</div>
+                    <div class="step-label">Servicios</div>
+                </div>
+                <div class="wizard-step-node" id="step-node-3">
+                    <div class="step-circle">3</div>
+                    <div class="step-label">Fecha / Hora</div>
+                </div>
+                <div class="wizard-step-node" id="step-node-4">
+                    <div class="step-circle">4</div>
+                    <div class="step-label">Confirmación</div>
+                </div>
+            </div>
+
+            <!-- CONTENIDO PASOS -->
+            <div class="wizard-content-box">
+                
+                <!-- PASO 1: BARBEROS -->
+                <div class="wizard-panel active" id="panel-step-1">
+                    <h2 class="panel-title">Selecciona tu <span>Barbero Experto</span></h2>
+                    <div class="barbers-grid" id="barbers-container">
+                        <!-- Dinámico -->
+                    </div>
+                </div>
+
+                <!-- PASO 2: SERVICIOS -->
+                <div class="wizard-panel" id="panel-step-2">
+                    <h2 class="panel-title">Elige un <span>Servicio de Estilo</span></h2>
+                    <div class="services-list" id="services-container">
+                        <!-- Dinámico -->
+                    </div>
+                </div>
+
+                <!-- PASO 3: FECHA Y HORA -->
+                <div class="wizard-panel" id="panel-step-3">
+                    <h2 class="panel-title">Reserva tu <span>Día y Hora</span></h2>
+                    
+                    <div class="booking-datetime-layout">
+                        <!-- Calendario -->
+                        <div class="calendar-box">
+                            <div class="calendar-control-row">
+                                <button id="btn-prev-month"><i class="fa-solid fa-chevron-left"></i></button>
+                                <h4 id="calendar-title">Julio 2026</h4>
+                                <button id="btn-next-month"><i class="fa-solid fa-chevron-right"></i></button>
+                            </div>
+                            <div class="calendar-grid-header">
+                                <div>Lu</div><div>Ma</div><div>Mi</div><div>Ju</div><div>Vi</div><div>Sá</div><div>Do</div>
+                            </div>
+                            <div class="calendar-days-container" id="calendar-days-grid">
+                                <!-- Dinámico -->
+                            </div>
+                        </div>
+
+                        <!-- Horas -->
+                        <div class="slots-box">
+                            <h4 id="selected-day-label">Selecciona un día en el calendario</h4>
+                            <div class="slots-container-grid" id="slots-grid-container">
+                                <!-- Dinámico -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PASO 4: DATOS CLIENTE Y CONFIRMACIÓN -->
+                <div class="wizard-panel" id="panel-step-4">
+                    <h2 class="panel-title">Finaliza tu <span>Reserva</span></h2>
+                    
+                    <div class="confirmation-layout">
+                        
+                        <!-- Resumen -->
+                        <div class="checkout-summary-box">
+                            <h3>Resumen del Servicio</h3>
+                            <div class="summary-details-card">
+                                <div class="summary-details-row">
+                                    <span>Barbero:</span>
+                                    <strong id="summary-barber-name">--</strong>
+                                </div>
+                                <div class="summary-details-row">
+                                    <span>Servicio:</span>
+                                    <strong id="summary-service-name">--</strong>
+                                </div>
+                                <div class="summary-details-row">
+                                    <span>Duración:</span>
+                                    <strong id="summary-duration">--</strong>
+                                </div>
+                                <div class="summary-details-row">
+                                    <span>Fecha y Hora:</span>
+                                    <strong id="summary-datetime">--</strong>
+                                </div>
+                                <div class="summary-total-row">
+                                    <span>Precio Final:</span>
+                                    <strong id="summary-total-price">$0</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Formulario de Contacto -->
+                        <div class="checkout-form-box">
+                            <form id="barber-booking-form" onsubmit="event.preventDefault();">
+                                <div class="form-group-barber">
+                                    <label for="client-name">Nombre Completo</label>
+                                    <input type="text" id="client-name" placeholder="Ej. Juan Pérez" required>
+                                </div>
+                                <div class="form-group-barber">
+                                    <label for="client-phone">Número de Teléfono</label>
+                                    <input type="tel" id="client-phone" placeholder="Ej. 987654321" required>
+                                </div>
+                                
+                                <div style="margin-top: 24px;">
+                                    <button type="submit" class="btn btn-primary btn-block" style="width: 100%;">
+                                        <i class="fa-solid fa-calendar-check"></i> Agendar e ir a la Barbería
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANTALLA ÉXITO -->
+                <div class="wizard-panel" id="panel-success">
+                    <div class="success-screen-card">
+                        <div class="success-icon-barber">
+                            <i class="fa-solid fa-check"></i>
+                        </div>
+                        <h2>¡Reserva Confirmada Exitosamente!</h2>
+                        <p>Tu cita ha sido guardada en nuestro sistema. Te esperamos puntualmente en la barbería.</p>
+                        <button class="btn btn-primary" id="btn-success-restart">Reservar otro turno</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Navegación inferior (Oculto en pantalla éxito) -->
+            <div class="wizard-footer-nav" id="wizard-navigation-buttons">
+                <button class="btn btn-outline" id="btn-prev-step" disabled>Volver</button>
+                <button class="btn btn-primary" id="btn-next-step" disabled>Siguiente</button>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Scripts de lógica -->
+    <script src="js/api.js"></script>
+    <script src="js/booking.js"></script>
+</body>
+</html>

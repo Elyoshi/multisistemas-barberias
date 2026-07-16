@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración — Barbería Legendaria</title>
+    
+    <!-- FontAwesome para iconografía clásica -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Hoja de estilos -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <div class="app-wrapper">
+        
+        <!-- CABECERA -->
+        <header>
+            <div class="brand">
+                <div class="brand-icon"><i class="fa-solid fa-scissors"></i></div>
+                <div class="brand-text">
+                    <h1>Legend <span>Admin</span></h1>
+                    <p>Panel de Control de Reservas</p>
+                </div>
+            </div>
+            <div>
+                <a href="client.html" class="btn btn-outline" target="_blank">
+                    <i class="fa-solid fa-store"></i> Ver Portal Cliente
+                </a>
+            </div>
+        </header>
+
+        <!-- PANEL DE MÉTRICAS -->
+        <div class="admin-metrics-row">
+            <!-- Ingresos totales estimulados -->
+            <div class="admin-metric-card border-gold">
+                <div class="metric-icon-box"><i class="fa-solid fa-dollar-sign"></i></div>
+                <div class="metric-details">
+                    <span class="metric-label">Ingresos Totales</span>
+                    <h3 class="metric-value" id="metric-revenue">$0</h3>
+                </div>
+            </div>
+
+            <!-- Reservas activas -->
+            <div class="admin-metric-card border-info">
+                <div class="metric-icon-box"><i class="fa-solid fa-calendar-check"></i></div>
+                <div class="metric-details">
+                    <span class="metric-label">Reservas Activas</span>
+                    <h3 class="metric-value" id="metric-active-count">0</h3>
+                </div>
+            </div>
+
+            <!-- Servicios completados -->
+            <div class="admin-metric-card border-success">
+                <div class="metric-icon-box"><i class="fa-solid fa-circle-check"></i></div>
+                <div class="metric-details">
+                    <span class="metric-label">Citas Completadas</span>
+                    <h3 class="metric-value" id="metric-completed-count">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABLA DE RESERVAS -->
+        <main class="glass-card">
+            
+            <div class="admin-table-filters-bar">
+                <h2 class="admin-table-title"><i class="fa-solid fa-list"></i> Registro de Turnos</h2>
+                
+                <div class="admin-filter-chips">
+                    <button class="admin-filter-chip active" data-status="todas">Todas</button>
+                    <button class="admin-filter-chip" data-status="pendiente">Pendientes</button>
+                    <button class="admin-filter-chip" data-status="confirmada">Confirmadas</button>
+                    <button class="admin-filter-chip" data-status="completada">Completadas</button>
+                    <button class="admin-filter-chip" data-status="cancelada">Canceladas</button>
+                </div>
+            </div>
+
+            <!-- Tabla física -->
+            <div class="admin-table-wrapper">
+                <table class="barber-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Contacto</th>
+                            <th>Barbero</th>
+                            <th>Servicio</th>
+                            <th>Prioridad</th>
+                            <th>Fecha & Hora</th>
+                            <th>Estado</th>
+                            <th style="text-align: right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-table-body">
+                        <!-- Dinámico -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty Placeholder -->
+            <div class="empty-placeholder" id="admin-table-empty" style="display: none;">
+                <i class="fa-regular fa-folder-open"></i>
+                <p>No se encontraron reservas con el filtro seleccionado.</p>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Scripts de lógica -->
+    <script src="js/api.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>
