@@ -371,18 +371,6 @@ header {
     margin-bottom: 8px;
 }
 
-.barber-card-rating {
-    font-size: 0.8rem;
-    color: #F59E0B;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background-color: rgba(245, 158, 11, 0.1);
-    padding: 2px 8px;
-    border-radius: 12px;
-    margin-bottom: 12px;
-}
-
 .barber-card-desc {
     font-size: 0.8rem;
     color: var(--color-text-muted);
