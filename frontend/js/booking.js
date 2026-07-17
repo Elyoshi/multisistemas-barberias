@@ -1,7 +1,8 @@
 // ============================================================================
 // booking.js — Lógica del wizard de reserva (portal cliente)
 // Extraído del <script> inline de client.html. Depende de api.js
-// (getBarbers, getServices, getReservations, createReservation).
+// (getBarbers, getServices, getReservations, createReservation), todas
+// asíncronas (devuelven Promise) sin importar el DATA_MODE de api.js.
 // ============================================================================
 
 // ESTADO LOCAL DEL WIZARD
@@ -17,7 +18,7 @@ let calendarDate = new Date(); // Mes en visualizador
 let panels, stepNodes, btnPrev, btnNext, progressLine;
 
 // INICIALIZACIÓN
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     panels = [
         null,
         document.getElementById('panel-step-1'),
@@ -36,8 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
     btnNext = document.getElementById('btn-next-step');
     progressLine = document.getElementById('progress-line');
 
-    renderBarbersStep();
-    renderServicesStep();
+    await renderBarbersStep();
+    await renderServicesStep();
 
     // Navegación
     btnPrev.addEventListener('click', () => goToStep(currentStep - 1));
@@ -54,35 +55,60 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Envío de Formulario
-    document.getElementById('barber-booking-form').addEventListener('submit', (e) => {
+    document.getElementById('barber-booking-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('client-name').value.trim();
         const phone = document.getElementById('client-phone').value.trim();
+        const submitBtn = e.target.querySelector('button[type="submit"]');
 
-        createReservation(name, phone, selectedBarberId, selectedServiceId, selectedDateStr, selectedTimeSlot);
-        showSuccessScreen();
+        clearBookingError();
+        submitBtn.disabled = true;
+
+        try {
+            const result = await createReservation(name, phone, selectedBarberId, selectedServiceId, selectedDateStr, selectedTimeSlot);
+
+            if (result && result.error === 'HORARIO_OCUPADO') {
+                showBookingError(result.message);
+                selectedTimeSlot = null;
+                await renderTimeSlots();
+                validateStepButton();
+                return;
+            }
+
+            showSuccessScreen();
+        } catch (err) {
+            // Cualquier falla que no sea el 409 manejado arriba: 500 del backend,
+            // corte de red, etc. Al cliente solo le mostramos un mensaje genérico
+            // (esto es una barbería, no un panel de debugging); el error real
+            // queda en la consola para diagnosticar en desarrollo.
+            console.error('Error al crear la reserva:', err);
+            showBookingError('No pudimos procesar tu reserva, por favor intenta de nuevo en unos segundos.');
+        } finally {
+            submitBtn.disabled = false;
+        }
     });
 
     // Reiniciar flujo éxito
-    document.getElementById('btn-success-restart').addEventListener('click', () => {
+    document.getElementById('btn-success-restart').addEventListener('click', async () => {
         currentStep = 1;
         selectedBarberId = null;
         selectedServiceId = null;
         selectedDateStr = null;
         selectedTimeSlot = null;
         document.getElementById('barber-booking-form').reset();
+        clearBookingError();
 
         document.getElementById('panel-success').classList.remove('active');
         document.getElementById('wizard-navigation-buttons').style.display = 'flex';
 
-        renderBarbersStep();
-        renderServicesStep();
+        await renderBarbersStep();
+        await renderServicesStep();
         goToStep(1);
     });
 });
 
 // WIZARD NAVIGATION
-function goToStep(stepNum) {
+async function goToStep(stepNum) {
     if (stepNum < 1 || stepNum > 4) return;
 
     panels.forEach((p, idx) => {
@@ -115,7 +141,7 @@ function goToStep(stepNum) {
     if (currentStep === 3) {
         renderCalendarWidget();
     } else if (currentStep === 4) {
-        prepareSummary();
+        await prepareSummary();
     }
 }
 
@@ -138,8 +164,8 @@ function validateStepButton() {
 }
 
 // PASO 1: RENDER BARBEROS
-function renderBarbersStep() {
-    const barbers = getBarbers();
+async function renderBarbersStep() {
+    const barbers = await getBarbers();
     const container = document.getElementById('barbers-container');
     container.innerHTML = '';
 
@@ -170,8 +196,8 @@ function renderBarbersStep() {
 }
 
 // PASO 2: RENDER SERVICIOS
-function renderServicesStep() {
-    const services = getServices();
+async function renderServicesStep() {
+    const services = await getServices();
     const container = document.getElementById('services-container');
     container.innerHTML = '';
 
@@ -250,7 +276,7 @@ function renderCalendarWidget() {
                 btn.classList.add('selected');
             }
 
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 document.querySelectorAll('.cal-day-btn').forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
 
@@ -260,7 +286,7 @@ function renderCalendarWidget() {
                 const formattedLabel = loopDate.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
                 document.getElementById('selected-day-label').innerHTML = `Fecha: <strong style="color: var(--color-gold);">${formattedLabel}</strong>`;
 
-                renderTimeSlots();
+                await renderTimeSlots();
                 validateStepButton();
             });
         }
@@ -269,13 +295,13 @@ function renderCalendarWidget() {
     }
 }
 
-function renderTimeSlots() {
+async function renderTimeSlots() {
     const container = document.getElementById('slots-grid-container');
     container.innerHTML = '';
 
     const hoursList = ["09:30", "10:30", "11:30", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
-    const allRes = getReservations();
+    const allRes = await getReservations();
     const bookedTimes = allRes
         .filter(r => r.barberId === selectedBarberId && r.date === selectedDateStr && r.status !== 'cancelada')
         .map(r => r.time);
@@ -308,9 +334,11 @@ function renderTimeSlots() {
 }
 
 // PASO 4: RESUMEN DE CHECKOUT
-function prepareSummary() {
-    const barber = getBarbers().find(b => b.id === selectedBarberId);
-    const service = getServices().find(s => s.id === selectedServiceId);
+async function prepareSummary() {
+    const barbers = await getBarbers();
+    const barber = barbers.find(b => b.id === selectedBarberId);
+    const services = await getServices();
+    const service = services.find(s => s.id === selectedServiceId);
 
     document.getElementById('summary-barber-name').textContent = barber ? barber.name : '--';
     document.getElementById('summary-service-name').textContent = service ? service.name : '--';
@@ -322,6 +350,31 @@ function prepareSummary() {
     const formattedDate = dateObj.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     document.getElementById('summary-datetime').textContent = `${formattedDate} a las ${selectedTimeSlot} Hrs`;
+}
+
+// MENSAJE DE ERROR DE RESERVA (ej. 409 horario ocupado)
+// No hay un elemento dedicado en client.html para esto, así que se crea
+// dinámicamente la primera vez y se reutiliza después.
+function showBookingError(message) {
+    let el = document.getElementById('booking-error-message');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'booking-error-message';
+        el.style.color = 'var(--color-alert)';
+        el.style.marginTop = '12px';
+        el.style.fontWeight = '600';
+        el.style.fontSize = '0.875rem';
+        document.getElementById('barber-booking-form').appendChild(el);
+    }
+    el.textContent = message;
+    el.style.display = 'block';
+}
+
+function clearBookingError() {
+    const el = document.getElementById('booking-error-message');
+    if (el) {
+        el.style.display = 'none';
+    }
 }
 
 // PANTALLA ÉXITO

@@ -1,7 +1,8 @@
 // ============================================================================
 // admin.js — Lógica del panel de administración
 // Extraído del <script> inline de admin.html. Depende de api.js
-// (getReservations, getBarbers, getServices, updateReservationStatus).
+// (getReservations, getBarbers, getServices, updateReservationStatus), todas
+// asíncronas (devuelven Promise) sin importar el DATA_MODE de api.js.
 //
 // NOTA DE SEGURIDAD: este panel todavía NO tiene autenticación. Antes de
 // desplegarlo (Paso 3), esta vista va a requerir login contra Django.
@@ -31,10 +32,49 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-function renderAdminDashboard() {
-    const reservations = getReservations();
-    const barbers = getBarbers();
-    const services = getServices();
+// MENSAJE DE ERROR DEL PANEL (ej. fetch fallido por corte de red)
+// No hay un elemento dedicado en admin.html para esto, así que se crea
+// dinámicamente la primera vez y se reutiliza después.
+function showAdminError(message) {
+    let el = document.getElementById('admin-error-message');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'admin-error-message';
+        el.style.color = 'var(--color-alert)';
+        el.style.border = '1px solid var(--color-alert)';
+        el.style.borderRadius = '8px';
+        el.style.padding = '12px 16px';
+        el.style.marginBottom = '16px';
+        el.style.fontWeight = '600';
+        el.style.fontSize = '0.875rem';
+        document.querySelector('.admin-metrics-row').insertAdjacentElement('beforebegin', el);
+    }
+    el.textContent = message;
+    el.style.display = 'block';
+}
+
+function clearAdminError() {
+    const el = document.getElementById('admin-error-message');
+    if (el) {
+        el.style.display = 'none';
+    }
+}
+
+async function renderAdminDashboard() {
+    let reservations, barbers, services;
+    try {
+        reservations = await getReservations();
+        barbers = await getBarbers();
+        services = await getServices();
+        clearAdminError();
+    } catch (err) {
+        // Fetch fallido (corte de red, backend caído, etc.). Se muestra un
+        // mensaje claro en vez de dejar el panel silenciosamente vacío o
+        // desactualizado; el error real queda en la consola para diagnosticar.
+        console.error('Error al cargar el panel de administración:', err);
+        showAdminError('No pudimos cargar las reservas. Verifica tu conexión e intenta de nuevo.');
+        return;
+    }
 
     const tbody = document.getElementById('admin-table-body');
     tbody.innerHTML = '';
@@ -138,9 +178,14 @@ function renderActionsByStatus(res) {
     return `<span style="font-size: 0.75rem; color: var(--color-text-light);"><i class="fa-solid fa-lock"></i> Finalizado</span>`;
 }
 
-function changeStatus(id, newStatus) {
-    const success = updateReservationStatus(id, newStatus);
-    if (success) {
-        renderAdminDashboard();
+async function changeStatus(id, newStatus) {
+    try {
+        const success = await updateReservationStatus(id, newStatus);
+        if (success) {
+            renderAdminDashboard();
+        }
+    } catch (err) {
+        console.error('Error al actualizar el estado de la reserva:', err);
+        showAdminError('No pudimos actualizar el estado de la reserva. Intenta de nuevo en unos segundos.');
     }
 }

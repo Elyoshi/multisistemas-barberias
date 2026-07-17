@@ -1,23 +1,21 @@
 // ============================================================================
 // api.js — CAPA DE DATOS (Data Access Layer)
 // ============================================================================
-// IMPORTANTE: Este es el ÚNICO archivo que va a cambiar cuando conectemos
-// el backend de Django (Paso 2/3 del roadmap). Todas las funciones de abajo
-// (getBarbers, getServices, getReservations, createReservation,
-// updateReservationStatus) van a mantener EXACTAMENTE la misma firma —
-// solo cambia su implementación interna de "leer localStorage" a
-// "hacer fetch() a la API". booking.js y admin.js no se van a tocar.
+// Único archivo que sabe si los datos vienen de localStorage o de la API real
+// de Django. booking.js y admin.js no necesitan saber qué modo está activo:
+// todas las funciones públicas (getBarbers, getServices, getReservations,
+// createReservation, updateReservationStatus) devuelven SIEMPRE una Promise,
+// sin importar DATA_MODE, así que siempre se consumen con await/.then().
 //
-// MODO ACTUAL: LOCAL (localStorage) — datos de prueba (MOCK), confirmado
-// por el equipo que estos NO son los barberos/servicios reales.
-// Cuando pasemos a Django, esta constante cambia a 'API'.
+// DATA_MODE = 'LOCAL' -> localStorage (datos MOCK, para probar sin backend)
+// DATA_MODE = 'API'   -> fetch() contra el backend Django en API_BASE_URL
 // ============================================================================
 
-const DATA_MODE = 'LOCAL'; // 'LOCAL' | 'API' (Paso 3 lo cambia a 'API')
-const API_BASE_URL = ''; // Paso 3: acá va la URL de Railway, ej: 'https://tu-backend.up.railway.app/api'
+const DATA_MODE = 'LOCAL'; // 'LOCAL' | 'API'
+const API_BASE_URL = ''; // ej: 'https://tu-backend.up.railway.app/api' (se configura por rama de deploy)
 
 // ----------------------------------------------------------------------------
-// DATOS DE PRUEBA (MOCK) — reemplazar por los reales al conectar Django
+// DATOS DE PRUEBA (MOCK) — solo se usan en modo LOCAL
 // ----------------------------------------------------------------------------
 const defaultBarbers = [
     {
@@ -129,7 +127,7 @@ const defaultReservations = [
 ];
 
 // ----------------------------------------------------------------------------
-// INICIALIZACIÓN LOCAL
+// INICIALIZACIÓN LOCAL (solo aplica en modo LOCAL)
 // ----------------------------------------------------------------------------
 function initLocalStorageDB() {
     if (!localStorage.getItem('bb_barbers')) {
@@ -143,24 +141,7 @@ function initLocalStorageDB() {
     }
 }
 
-// ----------------------------------------------------------------------------
-// FUNCIONES PÚBLICAS — firma estable, usadas por booking.js y admin.js
-// ----------------------------------------------------------------------------
-
-function getBarbers() {
-    // Paso 3 (modo API): return fetch(`${API_BASE_URL}/barberos/`).then(r => r.json());
-    initLocalStorageDB();
-    return JSON.parse(localStorage.getItem('bb_barbers'));
-}
-
-function getServices() {
-    // Paso 3 (modo API): return fetch(`${API_BASE_URL}/servicios/`).then(r => r.json());
-    initLocalStorageDB();
-    return JSON.parse(localStorage.getItem('bb_services'));
-}
-
-function getReservations() {
-    // Paso 3 (modo API): return fetch(`${API_BASE_URL}/reservas/`).then(r => r.json());
+function readLocalReservations() {
     initLocalStorageDB();
     return JSON.parse(localStorage.getItem('bb_reservations'));
 }
@@ -169,37 +150,122 @@ function saveReservations(resList) {
     localStorage.setItem('bb_reservations', JSON.stringify(resList));
 }
 
+// ----------------------------------------------------------------------------
+// FUNCIONES PÚBLICAS — firma estable, usadas por booking.js y admin.js.
+// Devuelven SIEMPRE una Promise: en LOCAL se envuelve el valor síncrono con
+// Promise.resolve(...); en API es el resultado real de fetch().
+// ----------------------------------------------------------------------------
+
+function getBarbers() {
+    if (DATA_MODE === 'LOCAL') {
+        initLocalStorageDB();
+        return Promise.resolve(JSON.parse(localStorage.getItem('bb_barbers')));
+    }
+    return fetch(`${API_BASE_URL}/barberos/`).then(r => {
+        if (!r.ok) {
+            throw new Error(`Error al obtener barberos (status ${r.status})`);
+        }
+        return r.json();
+    });
+}
+
+function getServices() {
+    if (DATA_MODE === 'LOCAL') {
+        initLocalStorageDB();
+        return Promise.resolve(JSON.parse(localStorage.getItem('bb_services')));
+    }
+    return fetch(`${API_BASE_URL}/servicios/`).then(r => {
+        if (!r.ok) {
+            throw new Error(`Error al obtener servicios (status ${r.status})`);
+        }
+        return r.json();
+    });
+}
+
+function getReservations() {
+    if (DATA_MODE === 'LOCAL') {
+        return Promise.resolve(readLocalReservations());
+    }
+    return fetch(`${API_BASE_URL}/reservas/`).then(r => {
+        if (!r.ok) {
+            throw new Error(`Error al obtener reservas (status ${r.status})`);
+        }
+        return r.json();
+    });
+}
+
 function createReservation(clientName, clientPhone, barberId, serviceId, date, time) {
-    // Paso 3 (modo API): esto pasa a ser un POST a /reservas/ — la validación
-    // de horario ocupado (anti doble-reserva) se hace en el backend con un
-    // constraint de base de datos, no solo en el navegador como ahora.
-    const list = getReservations();
-    const newRes = {
-        id: "res_" + Math.floor(Math.random() * 9000 + 1000),
-        clientName: clientName,
-        clientPhone: clientPhone,
-        barberId: barberId,
-        serviceId: serviceId,
-        date: date,
-        time: time,
-        status: "pendiente",
-        createdAt: new Date().toISOString()
-    };
-    list.push(newRes);
-    saveReservations(list);
-    return newRes;
+    if (DATA_MODE === 'LOCAL') {
+        const list = readLocalReservations();
+        const newRes = {
+            id: "res_" + Math.floor(Math.random() * 9000 + 1000),
+            clientName: clientName,
+            clientPhone: clientPhone,
+            barberId: barberId,
+            serviceId: serviceId,
+            date: date,
+            time: time,
+            status: "pendiente",
+            createdAt: new Date().toISOString()
+        };
+        list.push(newRes);
+        saveReservations(list);
+        return Promise.resolve(newRes);
+    }
+
+    // La validación de horario ocupado (anti doble-reserva) vive en el
+    // backend con un constraint de base de datos, no acá. Si el backend
+    // responde 409, se devuelve un objeto identificable en vez de lanzar
+    // una excepción genérica, para que booking.js pueda distinguir
+    // "horario ocupado" de cualquier otro error y mostrarle al cliente
+    // el mensaje correcto en vez de la pantalla de éxito.
+    return fetch(`${API_BASE_URL}/reservas/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cliente_nombre: clientName,
+            cliente_telefono: clientPhone,
+            barbero: barberId,
+            servicio: serviceId,
+            fecha: date,
+            hora: time
+        })
+    }).then(r => {
+        if (r.status === 409) {
+            return r.json().then(body => ({
+                error: 'HORARIO_OCUPADO',
+                message: body.detail || 'Ese horario ya fue reservado.'
+            }));
+        }
+        if (!r.ok) {
+            throw new Error(`Error al crear la reserva (status ${r.status})`);
+        }
+        return r.json();
+    });
 }
 
 function updateReservationStatus(resId, newStatus) {
-    // Paso 3 (modo API): esto pasa a ser un PATCH a /reservas/{id}/
-    const list = getReservations();
-    const index = list.findIndex(r => r.id === resId);
-    if (index !== -1) {
-        list[index].status = newStatus;
-        saveReservations(list);
-        return true;
+    if (DATA_MODE === 'LOCAL') {
+        const list = readLocalReservations();
+        const index = list.findIndex(r => r.id === resId);
+        if (index !== -1) {
+            list[index].status = newStatus;
+            saveReservations(list);
+            return Promise.resolve(true);
+        }
+        return Promise.resolve(false);
     }
-    return false;
+
+    return fetch(`${API_BASE_URL}/reservas/${resId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: newStatus })
+    }).then(r => {
+        if (!r.ok) {
+            throw new Error(`Error al actualizar el estado de la reserva (status ${r.status})`);
+        }
+        return true;
+    });
 }
 
 // Inicializar al cargar script (solo aplica en modo LOCAL)
