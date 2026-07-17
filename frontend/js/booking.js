@@ -1,8 +1,9 @@
 // ============================================================================
-// booking.js — Lógica del wizard de reserva (portal cliente)
+// booking.js — Lógica del wizard de reserva (portal cliente, SIN login)
 // Extraído del <script> inline de client.html. Depende de api.js
-// (getBarbers, getServices, getReservations, createReservation), todas
+// (getBarbers, getServices, getHorariosOcupados, createReservation), todas
 // asíncronas (devuelven Promise) sin importar el DATA_MODE de api.js.
+// Todas estas son públicas a propósito: el cliente reserva sin autenticarse.
 // ============================================================================
 
 // ESTADO LOCAL DEL WIZARD
@@ -301,9 +302,9 @@ async function renderTimeSlots() {
 
     const hoursList = ["09:30", "10:30", "11:30", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
-    const allRes = await getReservations();
-    const bookedTimes = allRes
-        .filter(r => r.barberId === selectedBarberId && r.date === selectedDateStr && r.status !== 'cancelada')
+    const ocupados = await getHorariosOcupados();
+    const bookedTimes = ocupados
+        .filter(r => r.barberId === selectedBarberId && r.date === selectedDateStr)
         .map(r => r.time);
 
     hoursList.forEach(hour => {

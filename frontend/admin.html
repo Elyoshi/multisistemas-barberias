@@ -13,8 +13,36 @@
 </head>
 <body>
 
-    <div class="app-wrapper">
-        
+    <!-- PANTALLA DE LOGIN — se muestra sola hasta que hay un token válido en
+         sessionStorage; ver admin.js (checkAdminAuth / handleLoginSubmit). -->
+    <div class="app-wrapper" id="login-screen">
+        <div class="glass-card" style="max-width: 380px; margin: 80px auto; padding: 32px;">
+            <div class="brand" style="justify-content: center; margin-bottom: 24px;">
+                <div class="brand-icon"><i class="fa-solid fa-scissors"></i></div>
+                <div class="brand-text">
+                    <h1>Legend <span>Admin</span></h1>
+                    <p>Panel de Control de Reservas</p>
+                </div>
+            </div>
+            <form id="login-form">
+                <div class="form-group-barber">
+                    <label for="login-username">Usuario</label>
+                    <input type="text" id="login-username" placeholder="Usuario" required autocomplete="username">
+                </div>
+                <div class="form-group-barber">
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" placeholder="Contraseña" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;" id="login-submit-btn">
+                    Iniciar sesión
+                </button>
+                <p id="login-error-message" style="color: var(--color-alert); font-weight: 600; font-size: 0.875rem; margin-top: 12px; display: none;"></p>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-wrapper" id="dashboard-screen" style="display: none;">
+
         <!-- CABECERA -->
         <header>
             <div class="brand">
@@ -24,10 +52,13 @@
                     <p>Panel de Control de Reservas</p>
                 </div>
             </div>
-            <div>
+            <div style="display: flex; gap: 12px;">
                 <a href="client.html" class="btn btn-outline" target="_blank">
                     <i class="fa-solid fa-store"></i> Ver Portal Cliente
                 </a>
+                <button type="button" class="btn btn-outline" id="btn-logout">
+                    <i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión
+                </button>
             </div>
         </header>
 
