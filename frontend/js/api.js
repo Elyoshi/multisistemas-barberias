@@ -210,6 +210,48 @@ function adminLogin(username, password) {
 }
 
 // ----------------------------------------------------------------------------
+// MAPEO API (Django, español) -> contrato interno (inglés) que ya usan
+// booking.js y admin.js, definido por defaultBarbers/defaultServices/
+// defaultReservations arriba. Solo aplica en modo API: en modo LOCAL los
+// datos ya nacen en este formato.
+// ----------------------------------------------------------------------------
+
+function mapBarbero(b) {
+    return {
+        id: b.id,
+        name: b.nombre,
+        role: b.rol,
+        specialty: b.especialidad,
+        avatar: b.avatar_url
+    };
+}
+
+function mapServicio(s) {
+    return {
+        id: s.id,
+        name: s.nombre,
+        price: s.precio,
+        duration: `${s.duracion_minutos} min`,
+        desc: s.descripcion,
+        category: s.categoria
+    };
+}
+
+function mapReserva(r) {
+    return {
+        id: r.id,
+        clientName: r.cliente_nombre,
+        clientPhone: r.cliente_telefono,
+        barberId: r.barbero,
+        serviceId: r.servicio,
+        date: r.fecha,
+        time: r.hora,
+        status: r.estado,
+        createdAt: r.creado_en
+    };
+}
+
+// -----------------------------------------------------------------------
 // FUNCIONES PÚBLICAS — firma estable, usadas por booking.js y admin.js.
 // Devuelven SIEMPRE una Promise: en LOCAL se envuelve el valor síncrono con
 // Promise.resolve(...); en API es el resultado real de fetch().
@@ -225,7 +267,7 @@ function getBarbers() {
             throw new Error(`Error al obtener barberos (status ${r.status})`);
         }
         return r.json();
-    });
+    }).then(data => data.map(mapBarbero));
 }
 
 function getServices() {
@@ -238,7 +280,7 @@ function getServices() {
             throw new Error(`Error al obtener servicios (status ${r.status})`);
         }
         return r.json();
-    });
+    }).then(data => data.map(mapServicio));
 }
 
 function getReservations() {
@@ -255,7 +297,7 @@ function getReservations() {
             throw new Error(`Error al obtener reservas (status ${r.status})`);
         }
         return r.json();
-    });
+    }).then(data => data.map(mapReserva));
 }
 
 // Versión pública (sin login) para booking.js: solo horarios ocupados,
@@ -282,6 +324,13 @@ function getHorariosOcupados() {
         time: item.hora.slice(0, 5) // backend devuelve "HH:MM:SS"; el wizard compara contra "HH:MM"
     })));
 }
+
+// Versión pública (sin login) para booking.js: solo horarios ocupados,
+// sin nombre/teléfono de clientes. El backend expone esto en una acción
+// separada (AllowAny) precisamente para no tener que abrir /reservas/
+// (list) completo -- ese ahora requiere token porque trae datos de
+// clientes (ver GET /api/reservas/ vs /api/reservas/horarios_ocupados/).
+
 
 function createReservation(clientName, clientPhone, barberId, serviceId, date, time) {
     if (DATA_MODE === 'LOCAL') {
