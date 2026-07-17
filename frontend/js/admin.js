@@ -1,18 +1,28 @@
 // ============================================================================
 // admin.js — Lógica del panel de administración
 // Extraído del <script> inline de admin.html. Depende de api.js
-// (getReservations, getBarbers, getServices, updateReservationStatus), todas
-// asíncronas (devuelven Promise) sin importar el DATA_MODE de api.js.
+// (getReservations, getBarbers, getServices, updateReservationStatus,
+// adminLogin), todas asíncronas (devuelven Promise) sin importar el
+// DATA_MODE de api.js.
 //
-// NOTA DE SEGURIDAD: este panel todavía NO tiene autenticación. Antes de
-// desplegarlo (Paso 3), esta vista va a requerir login contra Django.
-// No lo dejamos accesible públicamente sin contraseña.
+// AUTENTICACIÓN: este panel requiere login (token de Django, ver
+// adminLogin() en api.js). El dashboard está oculto hasta que hay un
+// token válido en sessionStorage; si el backend responde 401 en cualquier
+// momento (token inválido o expirado), se limpia la sesión y se vuelve
+// a la pantalla de login -- ver handleAuthError().
 // ============================================================================
 
 let currentFilter = 'todas';
 
 document.addEventListener('DOMContentLoaded', () => {
-    renderAdminDashboard();
+    document.getElementById('login-form').addEventListener('submit', handleLoginSubmit);
+    document.getElementById('btn-logout').addEventListener('click', logout);
+
+    if (getAdminToken()) {
+        showDashboard();
+    } else {
+        showLoginScreen();
+    }
 
     document.querySelectorAll('.admin-filter-chip').forEach(chip => {
         chip.addEventListener('click', () => {
@@ -31,6 +41,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// ----------------------------------------------------------------------------
+// LOGIN / LOGOUT
+// ----------------------------------------------------------------------------
+function showLoginScreen() {
+    document.getElementById('login-screen').style.display = 'block';
+    document.getElementById('dashboard-screen').style.display = 'none';
+}
+
+function showDashboard() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard-screen').style.display = 'block';
+    renderAdminDashboard();
+}
+
+function showLoginError(message) {
+    const el = document.getElementById('login-error-message');
+    el.textContent = message;
+    el.style.display = 'block';
+}
+
+function clearLoginError() {
+    document.getElementById('login-error-message').style.display = 'none';
+}
+
+async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const submitBtn = document.getElementById('login-submit-btn');
+
+    clearLoginError();
+    submitBtn.disabled = true;
+
+    try {
+        await adminLogin(username, password);
+        document.getElementById('login-form').reset();
+        showDashboard();
+    } catch (err) {
+        console.error('Error al iniciar sesión:', err);
+        showLoginError(err.message || 'No pudimos iniciar sesión. Intenta de nuevo.');
+    } finally {
+        submitBtn.disabled = false;
+    }
+}
+
+function logout() {
+    clearAdminToken();
+    showLoginScreen();
+}
+
+// Reacciona a un 401 del backend (token inválido o expirado): limpia la
+// sesión y vuelve al login en vez de dejar el dashboard mostrando datos
+// desactualizados o silenciosamente roto.
+function handleAuthError() {
+    clearAdminToken();
+    showLoginScreen();
+    showLoginError('Tu sesión expiró. Inicia sesión de nuevo.');
+}
 
 // MENSAJE DE ERROR DEL PANEL (ej. fetch fallido por corte de red)
 // No hay un elemento dedicado en admin.html para esto, así que se crea
@@ -68,6 +137,10 @@ async function renderAdminDashboard() {
         services = await getServices();
         clearAdminError();
     } catch (err) {
+        if (err instanceof AuthError) {
+            handleAuthError();
+            return;
+        }
         // Fetch fallido (corte de red, backend caído, etc.). Se muestra un
         // mensaje claro en vez de dejar el panel silenciosamente vacío o
         // desactualizado; el error real queda en la consola para diagnosticar.
@@ -185,6 +258,10 @@ async function changeStatus(id, newStatus) {
             renderAdminDashboard();
         }
     } catch (err) {
+        if (err instanceof AuthError) {
+            handleAuthError();
+            return;
+        }
         console.error('Error al actualizar el estado de la reserva:', err);
         showAdminError('No pudimos actualizar el estado de la reserva. Intenta de nuevo en unos segundos.');
     }

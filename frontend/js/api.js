@@ -9,6 +9,12 @@
 //
 // DATA_MODE = 'LOCAL' -> localStorage (datos MOCK, para probar sin backend)
 // DATA_MODE = 'API'   -> fetch() contra el backend Django en API_BASE_URL
+//
+// AUTENTICACIÓN (solo panel admin): getReservations() y
+// updateReservationStatus() requieren token (el backend las protege con
+// IsAuthenticated). booking.js nunca llama a estas dos ni necesita login:
+// usa getHorariosOcupados(), que es pública. Ver adminLogin()/authHeaders()
+// más abajo y la NOTA DE SEGURIDAD en admin.js.
 // ============================================================================
 
 const DATA_MODE = 'API'; // 'LOCAL' | 'API'
@@ -151,6 +157,59 @@ function saveReservations(resList) {
 }
 
 // ----------------------------------------------------------------------------
+// AUTENTICACIÓN DEL PANEL ADMIN
+// Token guardado en sessionStorage (se borra al cerrar la pestaña, a
+// diferencia de localStorage). Solo lo usa admin.js -- booking.js (portal
+// cliente) no requiere login y nunca llama a nada de este bloque.
+// ----------------------------------------------------------------------------
+const ADMIN_TOKEN_KEY = 'bb_admin_token';
+
+function getAdminToken() {
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+}
+
+function setAdminToken(token) {
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+function clearAdminToken() {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+// Error dedicado para 401: le permite a admin.js distinguir "la sesión
+// es inválida o expiró" (hay que mandar al login) de cualquier otro
+// fallo de red/servidor (que solo debe mostrarse como error genérico).
+class AuthError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'AuthError';
+    }
+}
+
+function authHeaders() {
+    const token = getAdminToken();
+    return token ? { 'Authorization': `Token ${token}` } : {};
+}
+
+function adminLogin(username, password) {
+    return fetch(`${API_BASE_URL}/auth/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+    }).then(r => {
+        if (!r.ok) {
+            return r.json().catch(() => ({})).then(body => {
+                throw new Error(body.detail || 'No pudimos iniciar sesión.');
+            });
+        }
+        return r.json();
+    }).then(body => {
+        setAdminToken(body.token);
+        return body.token;
+    });
+}
+
+// ----------------------------------------------------------------------------
 // FUNCIONES PÚBLICAS — firma estable, usadas por booking.js y admin.js.
 // Devuelven SIEMPRE una Promise: en LOCAL se envuelve el valor síncrono con
 // Promise.resolve(...); en API es el resultado real de fetch().
@@ -186,12 +245,42 @@ function getReservations() {
     if (DATA_MODE === 'LOCAL') {
         return Promise.resolve(readLocalReservations());
     }
-    return fetch(`${API_BASE_URL}/reservas/`).then(r => {
+    return fetch(`${API_BASE_URL}/reservas/`, {
+        headers: authHeaders()
+    }).then(r => {
+        if (r.status === 401) {
+            throw new AuthError('Sesión inválida o expirada.');
+        }
         if (!r.ok) {
             throw new Error(`Error al obtener reservas (status ${r.status})`);
         }
         return r.json();
     });
+}
+
+// Versión pública (sin login) para booking.js: solo horarios ocupados,
+// sin nombre/teléfono de clientes. El backend expone esto en una acción
+// separada (AllowAny) precisamente para no tener que abrir /reservas/
+// (list) completo -- ese ahora requiere token porque trae datos de
+// clientes (ver GET /api/reservas/ vs /api/reservas/horarios_ocupados/).
+function getHorariosOcupados() {
+    if (DATA_MODE === 'LOCAL') {
+        initLocalStorageDB();
+        const ocupados = readLocalReservations()
+            .filter(r => r.status !== 'cancelada')
+            .map(r => ({ barberId: r.barberId, date: r.date, time: r.time }));
+        return Promise.resolve(ocupados);
+    }
+    return fetch(`${API_BASE_URL}/reservas/horarios_ocupados/`).then(r => {
+        if (!r.ok) {
+            throw new Error(`Error al obtener horarios ocupados (status ${r.status})`);
+        }
+        return r.json();
+    }).then(data => data.map(item => ({
+        barberId: item.barbero_id,
+        date: item.fecha,
+        time: item.hora.slice(0, 5) // backend devuelve "HH:MM:SS"; el wizard compara contra "HH:MM"
+    })));
 }
 
 function createReservation(clientName, clientPhone, barberId, serviceId, date, time) {
@@ -258,9 +347,12 @@ function updateReservationStatus(resId, newStatus) {
 
     return fetch(`${API_BASE_URL}/reservas/${resId}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ estado: newStatus })
     }).then(r => {
+        if (r.status === 401) {
+            throw new AuthError('Sesión inválida o expirada.');
+        }
         if (!r.ok) {
             throw new Error(`Error al actualizar el estado de la reserva (status ${r.status})`);
         }

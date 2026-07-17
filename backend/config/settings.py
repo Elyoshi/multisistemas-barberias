@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework.authtoken",
     "corsheaders",
     "reservas",
 ]
@@ -131,12 +132,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # Django REST Framework
-# Sin autenticacion todavia: el flujo de reserva es publico (cliente sin login)
-# y el panel admin.js tampoco tiene login aun (ver nota de seguridad en admin.js).
-# Antes de desplegar a produccion real hay que restringir el PATCH de reservas.
+# Autenticacion por token (DRF authtoken). El default global es IsAuthenticated;
+# los endpoints que deben ser publicos (listar barberos/servicios, crear una
+# reserva, consultar horarios ocupados) sobreescriben permission_classes por
+# accion en su propio ViewSet -- ver get_permissions() en reservas/views.py.
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_PAGINATION_CLASS": None,
 }
