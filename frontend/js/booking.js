@@ -178,9 +178,6 @@ async function renderBarbersStep() {
             <img src="${barber.avatar}" alt="${barber.name}" class="barber-card-img">
             <h3 class="barber-card-name">${barber.name}</h3>
             <div class="barber-card-role">${barber.role}</div>
-            <div class="barber-card-rating">
-                <i class="fa-solid fa-star"></i> ${barber.rating}
-            </div>
             <p class="barber-card-desc">${barber.specialty}</p>
         `;
 
