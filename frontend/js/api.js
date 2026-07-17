@@ -11,8 +11,8 @@
 // DATA_MODE = 'API'   -> fetch() contra el backend Django en API_BASE_URL
 // ============================================================================
 
-const DATA_MODE = 'LOCAL'; // 'LOCAL' | 'API'
-const API_BASE_URL = ''; // ej: 'https://tu-backend.up.railway.app/api' (se configura por rama de deploy)
+const DATA_MODE = 'API'; // 'LOCAL' | 'API'
+const API_BASE_URL =  'https://backend-igna-production.up.railway.app/api'; // ej: 'https://tu-backend.up.railway.app/api' (se configura por rama de deploy)
 
 // ----------------------------------------------------------------------------
 // DATOS DE PRUEBA (MOCK) — solo se usan en modo LOCAL
