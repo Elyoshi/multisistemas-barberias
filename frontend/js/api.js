@@ -341,7 +341,7 @@ function getHorariosOcupados() {
         barberId: item.barbero_id,
         date: item.fecha,
         time: item.hora.slice(0, 5), // backend devuelve "HH:MM:SS"; el wizard compara contra "HH:MM"
-        durationMinutes: item.servicio__duracion_minutos
+        durationMinutes: item.duracion_minutos
     })));
 }
 

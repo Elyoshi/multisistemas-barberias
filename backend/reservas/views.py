@@ -1,4 +1,5 @@
 import threading
+from datetime import time as time_type
 
 from django.contrib.auth import authenticate
 from django.db import IntegrityError, transaction
@@ -10,8 +11,37 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .emails import send_confirmation_email, send_confirmation_email_multiple
-from .models import Barbero, Reserva, Servicio
+from .models import Barbero, BloqueoHorario, Reserva, Servicio
 from .serializers import BarberoSerializer, ReservaSerializer, ServicioSerializer
+
+
+def _bloqueo_que_choca(barbero_id, fecha, hora_inicio, duracion_minutos):
+    """Devuelve el BloqueoHorario de ese barbero/fecha que se superpone con
+    [hora_inicio, hora_inicio + duracion_minutos), o None si no hay ninguno.
+
+    Mismo criterio de superposicion que usa booking.js (renderTimeSlots): un
+    bloqueo de dia completo (hora_inicio/hora_fin null) se trata como si
+    cubriera 00:00-24:00 completo. El UniqueConstraint de Reserva no sirve
+    aca -- un bloqueo no es una Reserva, asi que sin este chequeo explicito
+    nada en la base de datos impide crear una reserva en un horario bloqueado.
+    """
+    inicio_reserva = hora_inicio.hour * 60 + hora_inicio.minute
+    fin_reserva = inicio_reserva + duracion_minutos
+    for bloqueo in BloqueoHorario.objects.filter(barbero_id=barbero_id, fecha=fecha):
+        if bloqueo.hora_inicio is None:
+            inicio_bloqueo, fin_bloqueo = 0, 24 * 60
+        else:
+            inicio_bloqueo = bloqueo.hora_inicio.hour * 60 + bloqueo.hora_inicio.minute
+            fin_bloqueo = bloqueo.hora_fin.hour * 60 + bloqueo.hora_fin.minute
+        if inicio_reserva < fin_bloqueo and fin_reserva > inicio_bloqueo:
+            return bloqueo
+    return None
+
+
+def _mensaje_bloqueo(bloqueo):
+    if bloqueo.motivo:
+        return f"Ese barbero no está disponible ese día ({bloqueo.motivo})."
+    return "Ese barbero no está disponible ese día."
 
 
 class LoginView(APIView):
@@ -80,11 +110,44 @@ class ReservaViewSet(viewsets.ModelViewSet):
         # calendario, pero NO debe poder ver nombre/telefono de otros
         # clientes (eso es lo que exponia el /reservas/ (list) publico
         # antes de este cambio). Se devuelve solo lo minimo indispensable.
-        # duracion_minutos del servicio va incluida porque el frontend la
-        # necesita para saber si un bloque de 2 servicios consecutivos
-        # cabe completo, no solo si el primer instante esta libre.
+        # duracion_minutos va incluida porque el frontend la necesita para
+        # saber si un bloque (2 servicios, o un bloqueo) cabe completo, no
+        # solo si el primer instante esta libre.
+        #
+        # Se combina en una sola lista, con la MISMA forma, reservas activas
+        # y bloqueos de horario -- asi el frontend no necesita distinguir
+        # entre "ocupado por una reserva" y "bloqueado por el barbero", el
+        # mismo chequeo de superposicion de booking.js sirve para ambos.
+        # Un bloqueo de dia completo (hora_inicio/hora_fin null) se emite
+        # como hora=00:00 + duracion=1440 (24hs), asi cubre cualquier slot
+        # de la grilla sin que el frontend necesite un caso especial.
         qs = self.get_queryset().exclude(estado=Reserva.Estado.CANCELADA)
-        data = list(qs.values("barbero_id", "fecha", "hora", "servicio__duracion_minutos"))
+        data = [
+            {
+                "barbero_id": r["barbero_id"],
+                "fecha": r["fecha"],
+                "hora": r["hora"],
+                "duracion_minutos": r["servicio__duracion_minutos"],
+            }
+            for r in qs.values("barbero_id", "fecha", "hora", "servicio__duracion_minutos")
+        ]
+
+        for bloqueo in BloqueoHorario.objects.all():
+            if bloqueo.hora_inicio is None:
+                hora, duracion = time_type(0, 0), 24 * 60
+            else:
+                inicio_min = bloqueo.hora_inicio.hour * 60 + bloqueo.hora_inicio.minute
+                fin_min = bloqueo.hora_fin.hour * 60 + bloqueo.hora_fin.minute
+                hora, duracion = bloqueo.hora_inicio, fin_min - inicio_min
+            data.append(
+                {
+                    "barbero_id": bloqueo.barbero_id,
+                    "fecha": bloqueo.fecha,
+                    "hora": hora,
+                    "duracion_minutos": duracion,
+                }
+            )
+
         return Response(data)
 
     @action(detail=False, methods=["post"])
@@ -117,6 +180,19 @@ class ReservaViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(data=payload)
             serializer.is_valid(raise_exception=True)
             serializers_list.append(serializer)
+
+        # Chequeo de bloqueos ANTES de tocar la base de datos: si cualquiera
+        # de los servicios cae en un horario bloqueado, se rechaza todo el
+        # combo -- no debe quedar ninguna reserva a medias.
+        for serializer in serializers_list:
+            bloqueo = _bloqueo_que_choca(
+                serializer.validated_data["barbero"].id,
+                serializer.validated_data["fecha"],
+                serializer.validated_data["hora"],
+                serializer.validated_data["servicio"].duracion_minutos,
+            )
+            if bloqueo:
+                return Response({"detail": _mensaje_bloqueo(bloqueo)}, status=status.HTTP_409_CONFLICT)
 
         reservas = []
         try:
@@ -157,6 +233,15 @@ class ReservaViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        bloqueo = _bloqueo_que_choca(
+            serializer.validated_data["barbero"].id,
+            serializer.validated_data["fecha"],
+            serializer.validated_data["hora"],
+            serializer.validated_data["servicio"].duracion_minutos,
+        )
+        if bloqueo:
+            return Response({"detail": _mensaje_bloqueo(bloqueo)}, status=status.HTTP_409_CONFLICT)
 
         try:
             with transaction.atomic():

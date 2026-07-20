@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -63,3 +64,33 @@ class Reserva(models.Model):
 
     def __str__(self):
         return f"{self.cliente_nombre} - {self.fecha} {self.hora} ({self.estado})"
+
+
+class BloqueoHorario(models.Model):
+    barbero = models.ForeignKey(Barbero, on_delete=models.CASCADE, related_name="bloqueos")
+    fecha = models.DateField()
+    hora_inicio = models.TimeField(null=True, blank=True)
+    hora_fin = models.TimeField(null=True, blank=True)
+    motivo = models.CharField(max_length=200, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "hora_inicio"]
+
+    def clean(self):
+        # Dia completo = ambos null. Rango especifico = ambos con valor.
+        # Un solo lado seteado es un estado ambiguo (¿bloquea desde esa hora
+        # hasta cuando?) que no queremos permitir cargar desde el admin.
+        if (self.hora_inicio is None) != (self.hora_fin is None):
+            raise ValidationError(
+                "Para bloquear un rango especifico, hora_inicio y hora_fin deben "
+                "estar ambos definidos. Para bloquear el dia completo, deja ambos "
+                "campos vacios."
+            )
+        if self.hora_inicio is not None and self.hora_fin is not None and self.hora_fin <= self.hora_inicio:
+            raise ValidationError("hora_fin debe ser posterior a hora_inicio.")
+
+    def __str__(self):
+        if self.hora_inicio is None:
+            return f"{self.barbero} - {self.fecha} (dia completo)"
+        return f"{self.barbero} - {self.fecha} {self.hora_inicio}-{self.hora_fin}"
