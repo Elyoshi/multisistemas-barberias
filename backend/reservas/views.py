@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .emails import send_confirmation_email, send_confirmation_email_multiple
-from .models import Barbero, BloqueoHorario, Reserva, Servicio
+from .models import Barbero, BloqueoHorario, DisponibilidadBarbero, Reserva, Servicio
 from .serializers import BarberoSerializer, ReservaSerializer, ServicioSerializer
 
 
@@ -99,9 +99,32 @@ class ReservaViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "head", "options"]
 
     def get_permissions(self):
-        if self.action in ("create", "horarios_ocupados", "multiples"):
+        if self.action in ("create", "horarios_ocupados", "multiples", "disponibilidad"):
             return [AllowAny()]
         return [IsAuthenticated()]
+
+    @action(detail=False, methods=["get"])
+    def disponibilidad(self, request):
+        # Override del horario base para un barbero en una fecha puntual
+        # (ver DisponibilidadBarbero). Capa ENCIMA del sistema existente: si
+        # no hay filas para ese barbero+fecha, se devuelve [] y booking.js
+        # sigue usando su hoursList base sin ningun cambio de comportamiento.
+        # Si hay filas, booking.js genera los horarios candidatos SOLO
+        # dentro de esas ventanas -- el chequeo de superposicion contra
+        # horarios_ocupados (reservas + bloqueos) sigue aplicandose igual,
+        # despues, sin importar de donde salieron las horas candidatas.
+        barbero_id = request.query_params.get("barbero_id")
+        fecha = request.query_params.get("fecha")
+        if not barbero_id or not fecha:
+            return Response(
+                {"detail": "Se requieren los parámetros 'barbero_id' y 'fecha'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ventanas = DisponibilidadBarbero.objects.filter(barbero_id=barbero_id, fecha=fecha).values(
+            "hora_inicio", "hora_fin"
+        )
+        return Response(list(ventanas))
 
     @action(detail=False, methods=["get"])
     def horarios_ocupados(self, request):

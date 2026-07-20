@@ -94,3 +94,25 @@ class BloqueoHorario(models.Model):
         if self.hora_inicio is None:
             return f"{self.barbero} - {self.fecha} (dia completo)"
         return f"{self.barbero} - {self.fecha} {self.hora_inicio}-{self.hora_fin}"
+
+
+class DisponibilidadBarbero(models.Model):
+    # Override del horario base para un barbero en una fecha puntual. Puede
+    # haber varias filas para el mismo barbero+fecha (ventanas separadas,
+    # ej. manana y tarde con pausa al mediodia). Si NO hay ninguna fila para
+    # un barbero+fecha, se usa el hoursList base sin cambios -- esto es una
+    # capa encima del sistema existente, no un reemplazo.
+    barbero = models.ForeignKey(Barbero, on_delete=models.CASCADE, related_name="disponibilidades")
+    fecha = models.DateField()
+    hora_inicio = models.TimeField()
+    hora_fin = models.TimeField()
+
+    class Meta:
+        ordering = ["fecha", "hora_inicio"]
+
+    def clean(self):
+        if self.hora_fin <= self.hora_inicio:
+            raise ValidationError("hora_fin debe ser posterior a hora_inicio.")
+
+    def __str__(self):
+        return f"{self.barbero} - {self.fecha} {self.hora_inicio}-{self.hora_fin}"

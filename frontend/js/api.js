@@ -345,6 +345,27 @@ function getHorariosOcupados() {
     })));
 }
 
+// Override del horario base para un barbero en una fecha puntual (ver
+// DisponibilidadBarbero). [] = no hay override, booking.js usa su hoursList
+// base sin cambios. Si trae ventanas, booking.js genera las horas
+// candidatas SOLO dentro de ellas. Solo aplica en modo API -- en modo
+// LOCAL no hay concepto de disponibilidad personalizada (es un dato que
+// se carga desde Django Admin, no algo que tenga sentido mockear).
+function getDisponibilidadBarbero(barberoId, fecha) {
+    if (DATA_MODE === 'LOCAL') {
+        return Promise.resolve([]);
+    }
+    return fetch(`${API_BASE_URL}/reservas/disponibilidad/?barbero_id=${barberoId}&fecha=${fecha}`).then(r => {
+        if (!r.ok) {
+            throw new Error(`Error al obtener disponibilidad (status ${r.status})`);
+        }
+        return r.json();
+    }).then(data => data.map(v => ({
+        horaInicio: v.hora_inicio.slice(0, 5),
+        horaFin: v.hora_fin.slice(0, 5)
+    })));
+}
+
 function createReservation(clientName, clientPhone, barberId, serviceId, date, time) {
     if (DATA_MODE === 'LOCAL') {
         const list = readLocalReservations();

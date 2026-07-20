@@ -1,7 +1,8 @@
 // ============================================================================
 // booking.js — Lógica del wizard de reserva (portal cliente, SIN login)
 // Extraído del <script> inline de client.html. Depende de api.js
-// (getBarbers, getServices, getHorariosOcupados, createReservationMultiple), todas
+// (getBarbers, getServices, getHorariosOcupados, getDisponibilidadBarbero,
+// createReservationMultiple), todas
 // asíncronas (devuelven Promise) sin importar el DATA_MODE de api.js.
 // Todas estas son públicas a propósito: el cliente reserva sin autenticarse.
 // ============================================================================
@@ -333,17 +334,40 @@ function minutesToTime(mins) {
     return `${h}:${m}`;
 }
 
+// Genera horas candidatas cada 30 min dentro de cada ventana de
+// disponibilidad, pero solo hasta donde el bloque completo (duracionMinutos)
+// quepa antes de que termine la ventana -- asi un candidato nunca se pasa
+// del horario en el que el barbero esta disponible ese dia.
+function generarHorasDesdeVentanas(ventanas, duracionMinutos, pasoMinutos = 30) {
+    const horas = [];
+    ventanas.forEach(v => {
+        let inicio = timeToMinutes(v.horaInicio);
+        const fin = timeToMinutes(v.horaFin);
+        while (inicio + duracionMinutos <= fin) {
+            horas.push(minutesToTime(inicio));
+            inicio += pasoMinutos;
+        }
+    });
+    return horas;
+}
+
 async function renderTimeSlots() {
     const container = document.getElementById('slots-grid-container');
     container.innerHTML = '';
-
-    const hoursList = ["09:30", "10:30", "11:30", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
     const services = await getServices();
     const totalDuration = selectedServiceIds.reduce((sum, id) => {
         const s = services.find(sv => sv.id === id);
         return sum + (s ? s.durationMinutes : 0);
     }, 0);
+
+    // Capa de disponibilidad personalizada: si hay ventanas cargadas para
+    // este barbero+fecha, reemplazan el hoursList base solo para esta
+    // fecha. Sin ventanas, comportamiento identico al de siempre.
+    const ventanas = await getDisponibilidadBarbero(selectedBarberId, selectedDateStr);
+    const hoursList = ventanas.length
+        ? generarHorasDesdeVentanas(ventanas, totalDuration)
+        : ["09:30", "10:30", "11:30", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
     const ocupados = await getHorariosOcupados();
     const bloquesOcupados = ocupados
