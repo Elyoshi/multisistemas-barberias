@@ -20,7 +20,7 @@
 const DATA_MODE = 'API'; // 'LOCAL' | 'API'
 const API_BASE_URL =  'https://backend-veltrix-production.up.railway.app/api'; // ej: 'https://tu-backend.up.railway.app/api' (se configura por rama de deploy)
 
-const BARBERIA_NOMBRE = 'Legend Barber'; // se configura por rama de deploy
+const BARBERIA_NOMBRE = 'Veltrix'; // se configura por rama de deploy
 const BARBERIA_TAGLINE = 'Cortes & Estilo Premium'; // idem
 const BARBERIA_COLOR_PRIMARIO = '#C9A961'; // idem, hex
 
