@@ -83,7 +83,8 @@ const defaultServices = [
         duration: "55 min",
         durationMinutes: 55,
         desc: "Servicio completo estrella: Corte a elección, perfilado de barba y toalla caliente aromática.",
-        category: "premium"
+        category: "premium",
+        isCombo: true
     },
     {
         id: "s_4",
@@ -243,7 +244,8 @@ function mapServicio(s) {
         duration: `${s.duracion_minutos} min`,
         durationMinutes: s.duracion_minutos,
         desc: s.descripcion,
-        category: s.categoria
+        category: s.categoria,
+        isCombo: s.es_combo
     };
 }
 

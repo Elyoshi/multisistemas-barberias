@@ -213,17 +213,30 @@ async function renderBarbersStep() {
 // se deshabilitan las tarjetas restantes hasta que el cliente deseleccione
 // alguna). El avance al paso 3 ya no es automático -- requiere el botón
 // "Siguiente", porque el primer click ya no implica "terminé de elegir".
+//
+// Regla de exclusividad de combos (serv.isCombo): un combo NUNCA se suma a
+// otra seleccion, siempre la reemplaza por completo. Mientras un combo esta
+// seleccionado, todo lo demas se ve atenuado ("locked") EXCEPTO el combo
+// mismo -- pero sigue siendo clickeable: un click en un no-combo con un
+// combo activo reemplaza la seleccion (no lo suma). El bloqueo real (sin
+// click, "disabled") solo aplica al limite de "hasta 2" entre no-combo.
 async function renderServicesStep() {
     const services = await getServices();
     const container = document.getElementById('services-container');
     container.innerHTML = '';
 
+    const selectedCombo = services.find(s => s.isCombo && selectedServiceIds.includes(s.id));
+
     services.forEach(serv => {
         const isSelected = selectedServiceIds.includes(serv.id);
-        const isDisabled = !isSelected && selectedServiceIds.length >= 2;
+        // Combo activo y esta no es su tarjeta: atenuada pero clickeable
+        // (permite reemplazar la seleccion, ver regla arriba).
+        const isLocked = Boolean(selectedCombo) && serv.id !== selectedCombo.id;
+        // Limite de 2 alcanzado sin combo de por medio: genuinamente bloqueada.
+        const isBlocked = !selectedCombo && !isSelected && !serv.isCombo && selectedServiceIds.length >= 2;
 
         const card = document.createElement('div');
-        card.className = `service-item-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`;
+        card.className = `service-item-card ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''} ${isBlocked ? 'disabled' : ''}`;
 
         card.innerHTML = `
             <div class="service-checkbox"><i class="fa-solid fa-check"></i></div>
@@ -240,13 +253,23 @@ async function renderServicesStep() {
             </div>
         `;
 
-        if (!isDisabled) {
+        if (!isBlocked) {
             card.addEventListener('click', () => {
-                const idx = selectedServiceIds.indexOf(serv.id);
-                if (idx !== -1) {
-                    selectedServiceIds.splice(idx, 1);
-                } else if (selectedServiceIds.length < 2) {
-                    selectedServiceIds.push(serv.id);
+                if (serv.isCombo) {
+                    // Un combo siempre reemplaza todo -- o se deselecciona
+                    // por completo si ya era el unico elegido.
+                    selectedServiceIds = isSelected ? [] : [serv.id];
+                } else if (selectedCombo) {
+                    // Habia un combo activo: un no-combo reemplaza, no se
+                    // suma al combo.
+                    selectedServiceIds = [serv.id];
+                } else {
+                    const idx = selectedServiceIds.indexOf(serv.id);
+                    if (idx !== -1) {
+                        selectedServiceIds.splice(idx, 1);
+                    } else if (selectedServiceIds.length < 2) {
+                        selectedServiceIds.push(serv.id);
+                    }
                 }
                 validateStepButton();
                 renderServicesStep();
