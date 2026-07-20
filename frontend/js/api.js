@@ -20,6 +20,10 @@
 const DATA_MODE = 'LOCAL'; // 'LOCAL' | 'API'
 const API_BASE_URL = ''; // ej: 'https://tu-backend.up.railway.app/api' (se configura por rama de deploy)
 
+const BARBERIA_NOMBRE = 'Legend Barber'; // se configura por rama de deploy
+const BARBERIA_TAGLINE = 'Cortes & Estilo Premium'; // idem
+const BARBERIA_COLOR_PRIMARIO = '#C9A961'; // idem, hex
+
 // ----------------------------------------------------------------------------
 // DATOS DE PRUEBA (MOCK) — solo se usan en modo LOCAL
 // ----------------------------------------------------------------------------
@@ -472,6 +476,45 @@ function updateReservationStatus(resId, newStatus) {
         return true;
     });
 }
+
+// ----------------------------------------------------------------------------
+// BRANDING POR RAMA — aplica BARBERIA_NOMBRE/TAGLINE/COLOR_PRIMARIO al DOM.
+// Corre en ambas páginas (client.html y admin.html, ambas cargan api.js) y en
+// ambos DATA_MODE -- esto no depende del backend, es puro dato de branch.
+// Los <h1> mantienen un texto default hardcodeado en el HTML como fallback
+// visual; esta función lo sobrescribe apenas carga el script.
+// ----------------------------------------------------------------------------
+function applyBranding() {
+    document.documentElement.style.setProperty('--color-gold', BARBERIA_COLOR_PRIMARIO);
+
+    // client.html: nombre a dos tonos, ej. "Legend" (plano) + "Barber" (oro).
+    // Si el nombre es de una sola palabra, va completo en el acento.
+    const brandHeading = document.getElementById('brand-name-heading');
+    const brandAccent = document.getElementById('brand-name-accent');
+    if (brandHeading && brandAccent) {
+        const parts = BARBERIA_NOMBRE.trim().split(/\s+/);
+        const accent = parts.length > 1 ? parts.pop() : parts[0];
+        const plain = parts.join(' ');
+        brandHeading.firstChild.textContent = plain ? `${plain} ` : '';
+        brandAccent.textContent = accent;
+        document.title = `Reserva tu Hora — ${BARBERIA_NOMBRE}`;
+    }
+
+    const tagline = document.getElementById('brand-tagline');
+    if (tagline) {
+        tagline.textContent = BARBERIA_TAGLINE;
+    }
+
+    // admin.html: aparece 2 veces (pantalla de login y dashboard). "Admin" es
+    // una etiqueta fija de la pagina, no parte del nombre de marca.
+    const adminBrandNames = document.querySelectorAll('.brand-name-plain');
+    if (adminBrandNames.length) {
+        adminBrandNames.forEach(el => { el.textContent = BARBERIA_NOMBRE; });
+        document.title = `Panel de Administración — ${BARBERIA_NOMBRE}`;
+    }
+}
+
+applyBranding();
 
 // Inicializar al cargar script (solo aplica en modo LOCAL)
 if (DATA_MODE === 'LOCAL') {

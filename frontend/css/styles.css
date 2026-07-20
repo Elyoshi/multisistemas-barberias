@@ -143,7 +143,7 @@ header {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #B59049 0%, #8C6A2E 100%);
+    background: linear-gradient(135deg, var(--color-gold) 0%, color-mix(in srgb, var(--color-gold) 70%, black) 100%);
     color: #060608;
     box-shadow: 0 4px 15px rgba(140, 106, 46, 0.25);
     text-transform: uppercase;
@@ -151,7 +151,7 @@ header {
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: linear-gradient(135deg, #C5A059 0%, #A6803F 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--color-gold) 85%, white) 0%, var(--color-gold) 100%);
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(197, 160, 89, 0.35);
 }
