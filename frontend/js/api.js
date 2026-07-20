@@ -24,6 +24,21 @@ const BARBERIA_NOMBRE = 'Legend Barber'; // se configura por rama de deploy
 const BARBERIA_TAGLINE = 'Cortes & Estilo Premium'; // idem
 const BARBERIA_COLOR_PRIMARIO = '#C9A961'; // idem, hex
 
+// Horario base por dia de la semana (Date.getDay(): 0 = domingo ... 6 = sabado).
+// null = cerrado ese dia. Reemplaza al viejo hoursList fijo -- ver
+// renderTimeSlots() en booking.js. DisponibilidadBarbero sigue teniendo
+// prioridad sobre esto cuando existe para un barbero+fecha puntual.
+const HORARIO_SEMANAL = {
+    0: { apertura: '09:30', cierre: '19:30' },
+    1: { apertura: '09:30', cierre: '19:30' },
+    2: { apertura: '09:30', cierre: '19:30' },
+    3: { apertura: '09:30', cierre: '19:30' },
+    4: { apertura: '09:30', cierre: '19:30' },
+    5: { apertura: '09:30', cierre: '19:30' },
+    6: { apertura: '09:30', cierre: '19:30' },
+}; // se configura por rama de deploy
+const ALMUERZO = { inicio: '11:30', fin: '14:00' }; // null si no aplica ese dia -- idem
+
 // ----------------------------------------------------------------------------
 // DATOS DE PRUEBA (MOCK) — solo se usan en modo LOCAL
 // ----------------------------------------------------------------------------
