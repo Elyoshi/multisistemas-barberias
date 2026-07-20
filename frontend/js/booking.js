@@ -175,7 +175,7 @@ async function renderBarbersStep() {
         card.className = `barber-selection-card ${selectedBarberId === barber.id ? 'selected' : ''}`;
 
         card.innerHTML = `
-            <img src="${barber.avatar}" alt="${barber.name}" class="barber-card-img">
+            <div class="barber-card-avatar">${barber.name.charAt(0).toUpperCase()}</div>
             <h3 class="barber-card-name">${barber.name}</h3>
             <div class="barber-card-role">${barber.role}</div>
             <p class="barber-card-desc">${barber.specialty}</p>

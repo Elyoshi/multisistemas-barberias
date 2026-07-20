@@ -342,18 +342,26 @@ header {
     box-shadow: 0 4px 20px var(--color-gold-glow);
 }
 
-.barber-card-img {
+.barber-card-avatar {
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    object-fit: cover;
     margin: 0 auto 16px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(197, 160, 89, 0.1);
     border: 2px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-gold);
+    font-family: var(--font-heading);
+    font-size: 1.8rem;
+    font-weight: 700;
     transition: var(--transition-smooth);
 }
 
-.barber-selection-card.selected .barber-card-img {
+.barber-selection-card.selected .barber-card-avatar {
     border-color: var(--color-gold);
+    background-color: rgba(197, 160, 89, 0.16);
     transform: scale(1.05);
 }
 
