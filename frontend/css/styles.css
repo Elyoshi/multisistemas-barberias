@@ -415,6 +415,33 @@ header {
     background-color: rgba(197, 160, 89, 0.05);
 }
 
+.service-item-card.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.service-checkbox {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 16px;
+    color: transparent;
+    font-size: 0.7rem;
+    transition: var(--transition-fast);
+}
+
+.service-item-card.selected .service-checkbox {
+    background-color: var(--color-gold);
+    border-color: var(--color-gold);
+    color: #060608;
+}
+
 .service-info {
     display: flex;
     flex-direction: column;

@@ -59,6 +59,7 @@ const defaultServices = [
         name: "Corte de Cabello Tradicional",
         price: 12000,
         duration: "30 min",
+        durationMinutes: 30,
         desc: "Lavado, corte con tijera o máquina y peinado con cera premium.",
         category: "corte"
     },
@@ -67,6 +68,7 @@ const defaultServices = [
         name: "Perfilado de Barba Real",
         price: 8000,
         duration: "25 min",
+        durationMinutes: 25,
         desc: "Diseño de barba, afeitado a navaja con toalla caliente y aceites hidratantes.",
         category: "barba"
     },
@@ -75,6 +77,7 @@ const defaultServices = [
         name: "Combo Legendario (Corte + Barba)",
         price: 18000,
         duration: "55 min",
+        durationMinutes: 55,
         desc: "Servicio completo estrella: Corte a elección, perfilado de barba y toalla caliente aromática.",
         category: "premium"
     },
@@ -83,6 +86,7 @@ const defaultServices = [
         name: "Corte de Cabello + Diseño Urbano",
         price: 15000,
         duration: "45 min",
+        durationMinutes: 45,
         desc: "Corte clásico o degradado sumado a líneas o diseño artístico (Hair Tattoo).",
         category: "corte"
     },
@@ -91,6 +95,7 @@ const defaultServices = [
         name: "Tratamiento Facial e Hidratación",
         price: 10000,
         duration: "20 min",
+        durationMinutes: 20,
         desc: "Limpieza facial con vapor, mascarilla negra exfoliante y masaje capilar.",
         category: "facial"
     }
@@ -232,6 +237,7 @@ function mapServicio(s) {
         name: s.nombre,
         price: s.precio,
         duration: `${s.duracion_minutos} min`,
+        durationMinutes: s.duracion_minutos,
         desc: s.descripcion,
         category: s.categoria
     };
@@ -308,9 +314,18 @@ function getReservations() {
 function getHorariosOcupados() {
     if (DATA_MODE === 'LOCAL') {
         initLocalStorageDB();
+        const services = JSON.parse(localStorage.getItem('bb_services')) || defaultServices;
         const ocupados = readLocalReservations()
             .filter(r => r.status !== 'cancelada')
-            .map(r => ({ barberId: r.barberId, date: r.date, time: r.time }));
+            .map(r => {
+                const service = services.find(s => s.id === r.serviceId);
+                return {
+                    barberId: r.barberId,
+                    date: r.date,
+                    time: r.time,
+                    durationMinutes: service ? service.durationMinutes : 0
+                };
+            });
         return Promise.resolve(ocupados);
     }
     return fetch(`${API_BASE_URL}/reservas/horarios_ocupados/`).then(r => {
@@ -321,7 +336,8 @@ function getHorariosOcupados() {
     }).then(data => data.map(item => ({
         barberId: item.barbero_id,
         date: item.fecha,
-        time: item.hora.slice(0, 5) // backend devuelve "HH:MM:SS"; el wizard compara contra "HH:MM"
+        time: item.hora.slice(0, 5), // backend devuelve "HH:MM:SS"; el wizard compara contra "HH:MM"
+        durationMinutes: item.servicio__duracion_minutos
     })));
 }
 
@@ -360,6 +376,61 @@ function createReservation(clientName, clientPhone, barberId, serviceId, date, t
             servicio: serviceId,
             fecha: date,
             hora: time
+        })
+    }).then(r => {
+        if (r.status === 409) {
+            return r.json().then(body => ({
+                error: 'HORARIO_OCUPADO',
+                message: body.detail || 'Ese horario ya fue reservado.'
+            }));
+        }
+        if (!r.ok) {
+            throw new Error(`Error al crear la reserva (status ${r.status})`);
+        }
+        return r.json();
+    });
+}
+
+// Reserva de 1-2 servicios consecutivos en la misma visita (mismo barbero,
+// misma fecha). serviciosConHora: [{ serviceId, time }, ...] ya con la hora
+// de inicio de cada bloque calculada por booking.js (sumando duraciones).
+// El backend sigue creando un registro por servicio (POST /reservas/multiples/),
+// pero todo dentro de una sola transacción -- ver ReservaViewSet.multiples().
+function createReservationMultiple(clientName, clientPhone, barberId, date, serviciosConHora) {
+    if (DATA_MODE === 'LOCAL') {
+        const list = readLocalReservations();
+        const createdAt = new Date().toISOString();
+        const created = serviciosConHora.map(({ serviceId, time }) => {
+            const newRes = {
+                id: "res_" + Math.floor(Math.random() * 9000 + 1000),
+                clientName: clientName,
+                clientPhone: clientPhone,
+                barberId: barberId,
+                serviceId: serviceId,
+                date: date,
+                time: time,
+                status: "pendiente",
+                createdAt: createdAt
+            };
+            list.push(newRes);
+            return newRes;
+        });
+        saveReservations(list);
+        return Promise.resolve(created);
+    }
+
+    return fetch(`${API_BASE_URL}/reservas/multiples/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cliente_nombre: clientName,
+            cliente_telefono: clientPhone,
+            barbero: barberId,
+            fecha: date,
+            servicios: serviciosConHora.map(({ serviceId, time }) => ({
+                servicio: serviceId,
+                hora: time
+            }))
         })
     }).then(r => {
         if (r.status === 409) {
