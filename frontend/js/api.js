@@ -514,8 +514,8 @@ function applyBranding() {
     const brandAccent = document.getElementById('brand-name-accent');
     if (brandHeading && brandAccent) {
         const parts = BARBERIA_NOMBRE.trim().split(/\s+/);
-        const accent = parts.length > 1 ? parts.pop() : parts[0];
-        const plain = parts.join(' ');
+        const accent = parts.pop(); // saca siempre la ultima palabra (y la quita de parts)
+        const plain = parts.join(' '); // el resto -- vacio si el nombre era de una sola palabra
         brandHeading.firstChild.textContent = plain ? `${plain} ` : '';
         brandAccent.textContent = accent;
         document.title = `Reserva tu Hora — ${BARBERIA_NOMBRE}`;
