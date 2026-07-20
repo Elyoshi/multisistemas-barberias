@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Barbero, Reserva, Servicio
+from .models import Barbero, BloqueoHorario, Reserva, Servicio
 
 
 @admin.register(Barbero)
@@ -44,3 +44,10 @@ class ReservaAdmin(admin.ModelAdmin):
     @admin.action(description="Marcar seleccionadas como cancelada")
     def marcar_cancelada(self, request, queryset):
         queryset.update(estado=Reserva.Estado.CANCELADA)
+
+
+@admin.register(BloqueoHorario)
+class BloqueoHorarioAdmin(admin.ModelAdmin):
+    list_display = ["barbero", "fecha", "hora_inicio", "hora_fin", "motivo"]
+    list_filter = ["fecha", "barbero"]
+    date_hierarchy = "fecha"
