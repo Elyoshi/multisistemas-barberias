@@ -1,7 +1,7 @@
 // ============================================================================
 // booking.js — Lógica del wizard de reserva (portal cliente, SIN login)
 // Extraído del <script> inline de client.html. Depende de api.js
-// (getBarbers, getServices, getHorariosOcupados, createReservation), todas
+// (getBarbers, getServices, getHorariosOcupados, createReservationMultiple), todas
 // asíncronas (devuelven Promise) sin importar el DATA_MODE de api.js.
 // Todas estas son públicas a propósito: el cliente reserva sin autenticarse.
 // ============================================================================
@@ -9,7 +9,7 @@
 // ESTADO LOCAL DEL WIZARD
 let currentStep = 1;
 let selectedBarberId = null;
-let selectedServiceId = null;
+let selectedServiceIds = []; // hasta 2 servicios, mismo barbero/fecha/bloque consecutivo
 let selectedDateStr = null; // YYYY-MM-DD
 let selectedTimeSlot = null; // HH:MM
 
@@ -66,7 +66,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         submitBtn.disabled = true;
 
         try {
-            const result = await createReservation(name, phone, selectedBarberId, selectedServiceId, selectedDateStr, selectedTimeSlot);
+            const services = await getServices();
+            const selectedServices = selectedServiceIds
+                .map(id => services.find(s => s.id === id))
+                .filter(Boolean);
+
+            let cursor = timeToMinutes(selectedTimeSlot);
+            const serviciosConHora = selectedServices.map(s => {
+                const time = minutesToTime(cursor);
+                cursor += s.durationMinutes;
+                return { serviceId: s.id, time };
+            });
+
+            const result = await createReservationMultiple(name, phone, selectedBarberId, selectedDateStr, serviciosConHora);
 
             if (result && result.error === 'HORARIO_OCUPADO') {
                 showBookingError(result.message);
@@ -93,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-success-restart').addEventListener('click', async () => {
         currentStep = 1;
         selectedBarberId = null;
-        selectedServiceId = null;
+        selectedServiceIds = [];
         selectedDateStr = null;
         selectedTimeSlot = null;
         document.getElementById('barber-booking-form').reset();
@@ -153,7 +165,7 @@ function validateStepButton() {
     if (currentStep === 1) {
         isValid = selectedBarberId !== null;
     } else if (currentStep === 2) {
-        isValid = selectedServiceId !== null;
+        isValid = selectedServiceIds.length > 0;
     } else if (currentStep === 3) {
         isValid = selectedDateStr !== null && selectedTimeSlot !== null;
     } else if (currentStep === 4) {
@@ -194,16 +206,26 @@ async function renderBarbersStep() {
 }
 
 // PASO 2: RENDER SERVICIOS
+// Selección múltiple (hasta 2 servicios de la misma visita, mismo barbero
+// y bloque de horario consecutivo). Se re-renderiza toda la lista en cada
+// click para reflejar el estado seleccionado/deshabilitado (al llegar a 2
+// se deshabilitan las tarjetas restantes hasta que el cliente deseleccione
+// alguna). El avance al paso 3 ya no es automático -- requiere el botón
+// "Siguiente", porque el primer click ya no implica "terminé de elegir".
 async function renderServicesStep() {
     const services = await getServices();
     const container = document.getElementById('services-container');
     container.innerHTML = '';
 
     services.forEach(serv => {
+        const isSelected = selectedServiceIds.includes(serv.id);
+        const isDisabled = !isSelected && selectedServiceIds.length >= 2;
+
         const card = document.createElement('div');
-        card.className = `service-item-card ${selectedServiceId === serv.id ? 'selected' : ''}`;
+        card.className = `service-item-card ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`;
 
         card.innerHTML = `
+            <div class="service-checkbox"><i class="fa-solid fa-check"></i></div>
             <div class="service-info">
                 <div class="service-name-row">
                     <span class="service-name">${serv.name}</span>
@@ -217,13 +239,18 @@ async function renderServicesStep() {
             </div>
         `;
 
-        card.addEventListener('click', () => {
-            selectedServiceId = serv.id;
-            document.querySelectorAll('.service-item-card').forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
-            validateStepButton();
-            setTimeout(() => goToStep(3), 250);
-        });
+        if (!isDisabled) {
+            card.addEventListener('click', () => {
+                const idx = selectedServiceIds.indexOf(serv.id);
+                if (idx !== -1) {
+                    selectedServiceIds.splice(idx, 1);
+                } else if (selectedServiceIds.length < 2) {
+                    selectedServiceIds.push(serv.id);
+                }
+                validateStepButton();
+                renderServicesStep();
+            });
+        }
 
         container.appendChild(card);
     });
@@ -293,23 +320,53 @@ function renderCalendarWidget() {
     }
 }
 
+// "HH:MM" <-> minutos desde medianoche, para sumar duraciones y comparar
+// bloques de horario (un servicio de 2 items ocupa mas que un slot fijo).
+function timeToMinutes(t) {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+}
+
+function minutesToTime(mins) {
+    const h = Math.floor(mins / 60).toString().padStart(2, '0');
+    const m = (mins % 60).toString().padStart(2, '0');
+    return `${h}:${m}`;
+}
+
 async function renderTimeSlots() {
     const container = document.getElementById('slots-grid-container');
     container.innerHTML = '';
 
     const hoursList = ["09:30", "10:30", "11:30", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
+    const services = await getServices();
+    const totalDuration = selectedServiceIds.reduce((sum, id) => {
+        const s = services.find(sv => sv.id === id);
+        return sum + (s ? s.durationMinutes : 0);
+    }, 0);
+
     const ocupados = await getHorariosOcupados();
-    const bookedTimes = ocupados
+    const bloquesOcupados = ocupados
         .filter(r => r.barberId === selectedBarberId && r.date === selectedDateStr)
-        .map(r => r.time);
+        .map(r => {
+            const inicio = timeToMinutes(r.time);
+            return { inicio, fin: inicio + (r.durationMinutes || 0) };
+        });
 
     hoursList.forEach(hour => {
         const btn = document.createElement('button');
         btn.className = 'barber-slot-btn';
         btn.textContent = `${hour} Hrs`;
 
-        const isBooked = bookedTimes.includes(hour);
+        // Un horario solo esta disponible si el bloque COMPLETO (inicio
+        // hasta inicio + duracion total de los servicios elegidos) no se
+        // superpone con ningun bloque ya ocupado de ese barbero/fecha.
+        const inicioCandidato = timeToMinutes(hour);
+        const finCandidato = inicioCandidato + totalDuration;
+        const isBooked = bloquesOcupados.some(
+            b => inicioCandidato < b.fin && finCandidato > b.inicio
+        );
+
         if (isBooked) {
             btn.disabled = true;
             btn.textContent = `${hour} (Ocupado)`;
@@ -336,12 +393,19 @@ async function prepareSummary() {
     const barbers = await getBarbers();
     const barber = barbers.find(b => b.id === selectedBarberId);
     const services = await getServices();
-    const service = services.find(s => s.id === selectedServiceId);
+    const selectedServices = selectedServiceIds
+        .map(id => services.find(s => s.id === id))
+        .filter(Boolean);
+
+    const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+    const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMinutes, 0);
 
     document.getElementById('summary-barber-name').textContent = barber ? barber.name : '--';
-    document.getElementById('summary-service-name').textContent = service ? service.name : '--';
-    document.getElementById('summary-duration').textContent = service ? service.duration : '--';
-    document.getElementById('summary-total-price').textContent = service ? `$${service.price.toLocaleString('es-CL')}` : '$0';
+    document.getElementById('summary-service-name').textContent = selectedServices.length
+        ? selectedServices.map(s => s.name).join(' + ')
+        : '--';
+    document.getElementById('summary-duration').textContent = selectedServices.length ? `${totalDuration} min` : '--';
+    document.getElementById('summary-total-price').textContent = `$${totalPrice.toLocaleString('es-CL')}`;
 
     const dateParts = selectedDateStr.split('-');
     const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
