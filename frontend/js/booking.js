@@ -314,9 +314,13 @@ function renderCalendarWidget() {
         const loopDateStr = `${year}-${formatMonth}-${formatDay}`;
 
         const compareToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const cerrado = HORARIO_SEMANAL[loopDate.getDay()] === null;
 
-        if (loopDate < compareToday) {
+        if (loopDate < compareToday || cerrado) {
             btn.disabled = true;
+            if (cerrado) {
+                btn.title = 'Cerrado este día';
+            }
         } else {
             if (loopDate.toDateString() === today.toDateString()) {
                 btn.classList.add('today');
@@ -374,9 +378,57 @@ function generarHorasDesdeVentanas(ventanas, duracionMinutos, pasoMinutos = 30) 
     return horas;
 }
 
+// Dia de la semana (0=domingo..6=sabado) a partir de "YYYY-MM-DD", construido
+// por componentes (no Date.parse de un string) para evitar corrimientos de
+// zona horaria.
+function diaDeSemana(fecha) {
+    const [y, m, d] = fecha.split('-').map(Number);
+    return new Date(y, m - 1, d).getDay();
+}
+
+// Deriva las ventanas del horario base de ese dia desde HORARIO_SEMANAL,
+// restando el hueco de ALMUERZO si cae dentro del rango (da 1 o 2 sub-
+// ventanas, ej. manana y tarde). Mismo formato {horaInicio, horaFin} que
+// getDisponibilidadBarbero(), para poder reusar generarHorasDesdeVentanas().
+// Devuelve [] si el dia esta cerrado (HORARIO_SEMANAL[dia] === null).
+function ventanasDesdeHorarioSemanal(fecha) {
+    const horario = HORARIO_SEMANAL[diaDeSemana(fecha)];
+    if (!horario) {
+        return [];
+    }
+
+    const inicio = timeToMinutes(horario.apertura);
+    const fin = timeToMinutes(horario.cierre);
+
+    if (!ALMUERZO) {
+        return [{ horaInicio: horario.apertura, horaFin: horario.cierre }];
+    }
+
+    const almuerzoInicio = timeToMinutes(ALMUERZO.inicio);
+    const almuerzoFin = timeToMinutes(ALMUERZO.fin);
+    const ventanas = [];
+    if (almuerzoInicio > inicio) {
+        ventanas.push({ horaInicio: horario.apertura, horaFin: minutesToTime(Math.min(almuerzoInicio, fin)) });
+    }
+    if (almuerzoFin < fin) {
+        ventanas.push({ horaInicio: minutesToTime(Math.max(almuerzoFin, inicio)), horaFin: horario.cierre });
+    }
+    return ventanas;
+}
+
 async function renderTimeSlots() {
     const container = document.getElementById('slots-grid-container');
     container.innerHTML = '';
+
+    if (HORARIO_SEMANAL[diaDeSemana(selectedDateStr)] === null) {
+        container.innerHTML = `
+            <div class="empty-placeholder">
+                <i class="fa-regular fa-calendar-xmark"></i>
+                <p>Cerrado este día. Elige otra fecha en el calendario.</p>
+            </div>
+        `;
+        return;
+    }
 
     const services = await getServices();
     const totalDuration = selectedServiceIds.reduce((sum, id) => {
@@ -385,12 +437,13 @@ async function renderTimeSlots() {
     }, 0);
 
     // Capa de disponibilidad personalizada: si hay ventanas cargadas para
-    // este barbero+fecha, reemplazan el hoursList base solo para esta
-    // fecha. Sin ventanas, comportamiento identico al de siempre.
+    // este barbero+fecha, reemplazan el horario base solo para esta fecha
+    // (prioridad absoluta sobre HORARIO_SEMANAL/ALMUERZO). Sin ventanas, se
+    // deriva el horario base del dia de la semana.
     const ventanas = await getDisponibilidadBarbero(selectedBarberId, selectedDateStr);
     const hoursList = ventanas.length
         ? generarHorasDesdeVentanas(ventanas, totalDuration)
-        : ["09:30", "10:30", "11:30", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
+        : generarHorasDesdeVentanas(ventanasDesdeHorarioSemanal(selectedDateStr), totalDuration);
 
     const ocupados = await getHorariosOcupados();
     const bloquesOcupados = ocupados
