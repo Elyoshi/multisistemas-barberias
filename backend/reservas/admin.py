@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Barbero, BloqueoHorario, Reserva, Servicio
+from .models import Barbero, BloqueoHorario, DisponibilidadBarbero, Reserva, Servicio
 
 
 @admin.register(Barbero)
@@ -49,5 +49,12 @@ class ReservaAdmin(admin.ModelAdmin):
 @admin.register(BloqueoHorario)
 class BloqueoHorarioAdmin(admin.ModelAdmin):
     list_display = ["barbero", "fecha", "hora_inicio", "hora_fin", "motivo"]
+    list_filter = ["fecha", "barbero"]
+    date_hierarchy = "fecha"
+
+
+@admin.register(DisponibilidadBarbero)
+class DisponibilidadBarberoAdmin(admin.ModelAdmin):
+    list_display = ["barbero", "fecha", "hora_inicio", "hora_fin"]
     list_filter = ["fecha", "barbero"]
     date_hierarchy = "fecha"
