@@ -12,8 +12,8 @@ class BarberoAdmin(admin.ModelAdmin):
 
 @admin.register(Servicio)
 class ServicioAdmin(admin.ModelAdmin):
-    list_display = ["nombre", "categoria", "precio", "duracion_minutos", "activo"]
-    list_filter = ["categoria", "activo"]
+    list_display = ["nombre", "categoria", "precio", "duracion_minutos", "es_combo", "activo"]
+    list_filter = ["categoria", "es_combo", "activo"]
     search_fields = ["nombre"]
 
 

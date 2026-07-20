@@ -26,6 +26,7 @@ class ServicioSerializer(serializers.ModelSerializer):
             "duracion_minutos",
             "descripcion",
             "categoria",
+            "es_combo",
             "activo",
         ]
 

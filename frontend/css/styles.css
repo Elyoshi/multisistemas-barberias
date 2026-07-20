@@ -421,6 +421,10 @@ header {
     pointer-events: none;
 }
 
+.service-item-card.locked {
+    opacity: 0.5;
+}
+
 .service-checkbox {
     width: 22px;
     height: 22px;

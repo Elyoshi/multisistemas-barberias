@@ -23,6 +23,11 @@ class Servicio(models.Model):
     descripcion = models.TextField(blank=True)
     categoria = models.CharField(max_length=50, blank=True)
     activo = models.BooleanField(default=True)
+    # Un combo es excluyente en el Step 2 del wizard: seleccionarlo reemplaza
+    # cualquier otra seleccion (no se puede sumar a otros servicios). Ver
+    # renderServicesStep() en booking.js -- esta regla vive en el frontend,
+    # este campo solo marca que servicios la disparan.
+    es_combo = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["nombre"]
