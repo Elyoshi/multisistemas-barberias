@@ -365,12 +365,18 @@ function minutesToTime(mins) {
 // disponibilidad, pero solo hasta donde el bloque completo (duracionMinutos)
 // quepa antes de que termine la ventana -- asi un candidato nunca se pasa
 // del horario en el que el barbero esta disponible ese dia.
+// Excepcion: si la ventana trae permiteInicioEnCierre (el cierre real del
+// horario semanal, no un limite duro como almuerzo/bloqueos/reservas o
+// DisponibilidadBarbero), el ultimo candidato puede ser exactamente horaFin
+// aunque el bloque se extienda mas alla -- el cliente puede empezar un
+// servicio justo al cierre.
 function generarHorasDesdeVentanas(ventanas, duracionMinutos, pasoMinutos = 30) {
     const horas = [];
     ventanas.forEach(v => {
         let inicio = timeToMinutes(v.horaInicio);
         const fin = timeToMinutes(v.horaFin);
-        while (inicio + duracionMinutos <= fin) {
+        const limite = v.permiteInicioEnCierre ? fin : fin - duracionMinutos;
+        while (inicio <= limite) {
             horas.push(minutesToTime(inicio));
             inicio += pasoMinutos;
         }
@@ -391,6 +397,15 @@ function diaDeSemana(fecha) {
 // ventanas, ej. manana y tarde). Mismo formato {horaInicio, horaFin} que
 // getDisponibilidadBarbero(), para poder reusar generarHorasDesdeVentanas().
 // Devuelve [] si el dia esta cerrado (HORARIO_SEMANAL[dia] === null).
+//
+// La ventana cuyo horaFin coincide con el cierre real del dia se marca con
+// permiteInicioEnCierre: el cierre es "ultima hora de inicio permitida", no
+// un limite que el bloque completo del servicio deba respetar (a diferencia
+// del almuerzo, que si sigue exigiendo que el bloque quepa completo). Se
+// compara contra horario.cierre en vez de asumir "la ultima ventana del
+// array" para cubrir el caso borde en que el almuerzo se extiende hasta
+// despues del cierre: ahi la unica ventana generada termina en el inicio
+// del almuerzo, no en el cierre real, y no debe llevar el flag.
 function ventanasDesdeHorarioSemanal(fecha) {
     const horario = HORARIO_SEMANAL[diaDeSemana(fecha)];
     if (!horario) {
@@ -401,17 +416,18 @@ function ventanasDesdeHorarioSemanal(fecha) {
     const fin = timeToMinutes(horario.cierre);
 
     if (!ALMUERZO) {
-        return [{ horaInicio: horario.apertura, horaFin: horario.cierre }];
+        return [{ horaInicio: horario.apertura, horaFin: horario.cierre, permiteInicioEnCierre: true }];
     }
 
     const almuerzoInicio = timeToMinutes(ALMUERZO.inicio);
     const almuerzoFin = timeToMinutes(ALMUERZO.fin);
     const ventanas = [];
     if (almuerzoInicio > inicio) {
-        ventanas.push({ horaInicio: horario.apertura, horaFin: minutesToTime(Math.min(almuerzoInicio, fin)) });
+        const horaFin = minutesToTime(Math.min(almuerzoInicio, fin));
+        ventanas.push({ horaInicio: horario.apertura, horaFin, permiteInicioEnCierre: horaFin === horario.cierre });
     }
     if (almuerzoFin < fin) {
-        ventanas.push({ horaInicio: minutesToTime(Math.max(almuerzoFin, inicio)), horaFin: horario.cierre });
+        ventanas.push({ horaInicio: minutesToTime(Math.max(almuerzoFin, inicio)), horaFin: horario.cierre, permiteInicioEnCierre: true });
     }
     return ventanas;
 }
