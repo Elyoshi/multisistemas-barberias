@@ -1,3 +1,5 @@
+import uuid
+
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -8,6 +10,10 @@ class Barbero(models.Model):
     especialidad = models.TextField(blank=True)
     avatar_url = models.URLField(blank=True)
     activo = models.BooleanField(default=True)
+    # Opcional a proposito: ya hay barberos reales cargados sin este dato.
+    # Sin email, send_notificacion_barbero() simplemente no le notifica
+    # (ver reservas/emails.py) -- no bloquea nada.
+    email = models.EmailField(blank=True)
 
     class Meta:
         ordering = ["nombre"]
@@ -52,6 +58,11 @@ class Reserva(models.Model):
     hora = models.TimeField()
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
     creado_en = models.DateTimeField(auto_now_add=True)
+    # Sin unique=True a proposito: las reservas de una misma visita (combo,
+    # ver ReservaViewSet.multiples()) comparten el mismo token para poder
+    # confirmarse/cancelarse juntas desde un solo link. No se expone en
+    # ReservaSerializer -- solo vive en los links de los emails.
+    token_confirmacion = models.UUIDField(default=uuid.uuid4, editable=False)
 
     class Meta:
         ordering = ["-fecha", "-hora"]
