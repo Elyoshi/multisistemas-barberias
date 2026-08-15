@@ -1,8 +1,14 @@
 import threading
+import uuid
 from datetime import time as time_type
 
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.db import IntegrityError, transaction
+from django.http import HttpResponse, HttpResponseNotFound
+from django.middleware.csrf import get_token
+from django.urls import reverse
+from django.views.decorators.http import require_http_methods
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
@@ -10,7 +16,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .emails import send_confirmation_email, send_confirmation_email_multiple
+from .emails import (
+    send_confirmation_email,
+    send_confirmation_email_cliente,
+    send_confirmation_email_multiple,
+    send_notificacion_barbero,
+)
 from .models import Barbero, BloqueoHorario, DisponibilidadBarbero, Reserva, Servicio
 from .serializers import BarberoSerializer, ReservaSerializer, ServicioSerializer
 
@@ -42,6 +53,166 @@ def _mensaje_bloqueo(bloqueo):
     if bloqueo.motivo:
         return f"Ese barbero no está disponible ese día ({bloqueo.motivo})."
     return "Ese barbero no está disponible ese día."
+
+
+def _links_confirmacion(request, token):
+    confirm_url = request.build_absolute_uri(reverse("reserva-confirmar", args=[token]))
+    cancel_url = request.build_absolute_uri(reverse("reserva-cancelar", args=[token]))
+    return confirm_url, cancel_url
+
+
+def _pagina_confirmacion_html(titulo, mensaje, reservas=None, form_html=""):
+    # HTML minimo a proposito: esta pagina la abre el cliente/barbero desde
+    # el link del email, no es parte del SPA (booking.js/admin.js).
+    detalle = ""
+    if reservas:
+        primera = reservas[0]
+        items = "".join(
+            f"<li>{r.servicio.nombre} a las {r.hora.strftime('%H:%M')}</li>" for r in reservas
+        )
+        detalle = (
+            f"<p><strong>Cliente:</strong> {primera.cliente_nombre}</p>"
+            f"<ul>{items}</ul>"
+            f"<p><strong>Fecha:</strong> {primera.fecha.strftime('%d-%m-%Y')}</p>"
+        )
+    return (
+        "<!DOCTYPE html>"
+        '<html lang="es"><head><meta charset="utf-8">'
+        f"<title>{titulo}</title></head>"
+        '<body style="font-family: sans-serif; max-width: 480px; margin: 40px auto; text-align: center;">'
+        f"<h1>{titulo}</h1><p>{mensaje}</p>{detalle}{form_html}"
+        "</body></html>"
+    )
+
+
+def _form_accion_html(request, accion_url, boton_texto):
+    # get_token() arma un token CSRF real ligado a la sesion/cookie del
+    # visitante (misma proteccion que {% csrf_token %} en un template) y
+    # marca la respuesta para que el middleware setee la cookie -- no es
+    # HTML "a mano" sin proteccion, solo no pasa por el motor de templates.
+    csrf_token = get_token(request)
+    return (
+        f'<form method="POST" action="{accion_url}">'
+        f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
+        f'<button type="submit" style="padding: 10px 24px; font-size: 1rem; margin-top: 16px;">'
+        f"{boton_texto}</button>"
+        "</form>"
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def confirmar_reserva(request, token):
+    """Endpoint publico (sin login) que se abre desde el link del email al
+    cliente/barbero. Confirma TODAS las Reserva con ese token_confirmacion
+    a la vez -- comparten token cuando vienen de multiples() (combo de la
+    misma visita). Solo mueve pendiente -> confirmada; una cancelada no
+    se revive.
+
+    GET solo muestra el detalle y un boton -- no debe mutar nada, porque
+    los scanners de seguridad de email (Outlook Safe Links, Barracuda,
+    etc.) visitan el link solo por abrirlo, sin que el humano haya hecho
+    click todavia. La transicion real solo ocurre en POST, disparada por
+    el <form> de esa misma pagina.
+    """
+    if not settings.HABILITAR_CONFIRMACION_EMAIL:
+        return HttpResponseNotFound()
+
+    reservas = list(
+        Reserva.objects.select_related("barbero", "servicio").filter(token_confirmacion=token)
+    )
+    if not reservas:
+        html = _pagina_confirmacion_html(
+            "Reserva no encontrada", "No encontramos ninguna reserva con ese enlace."
+        )
+        return HttpResponse(html, status=404)
+
+    pendientes = [r for r in reservas if r.estado == Reserva.Estado.PENDIENTE]
+
+    if request.method == "POST":
+        if not pendientes:
+            return HttpResponse(_pagina_resultado_no_confirmable(reservas))
+        for reserva in pendientes:
+            reserva.estado = Reserva.Estado.CONFIRMADA
+            reserva.save(update_fields=["estado"])
+        threading.Thread(
+            target=send_confirmation_email_cliente, args=(reservas,), daemon=True
+        ).start()
+        html = _pagina_confirmacion_html("Hora confirmada", "Tu hora fue confirmada con éxito.", reservas)
+        return HttpResponse(html)
+
+    if not pendientes:
+        return HttpResponse(_pagina_resultado_no_confirmable(reservas))
+
+    form = _form_accion_html(request, reverse("reserva-confirmar", args=[token]), "Sí, confirmar esta reserva")
+    html = _pagina_confirmacion_html(
+        "Confirmar tu hora", "Revisa el detalle y confirma tu hora.", reservas, form_html=form
+    )
+    return HttpResponse(html)
+
+
+def _pagina_resultado_no_confirmable(reservas):
+    if all(r.estado == Reserva.Estado.CONFIRMADA for r in reservas):
+        return _pagina_confirmacion_html(
+            "Ya estaba confirmada", "Esta hora ya había sido confirmada anteriormente.", reservas
+        )
+    return _pagina_confirmacion_html(
+        "No se puede confirmar",
+        f"Esta hora no se puede confirmar (estado actual: {reservas[0].get_estado_display()}).",
+        reservas,
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def cancelar_reserva(request, token):
+    """Igual que confirmar_reserva pero para cancelar: GET solo muestra el
+    detalle y el boton, POST ejecuta la transicion. Permite cancelar desde
+    pendiente o confirmada; una ya cancelada queda igual.
+    """
+    if not settings.HABILITAR_CONFIRMACION_EMAIL:
+        return HttpResponseNotFound()
+
+    reservas = list(
+        Reserva.objects.select_related("barbero", "servicio").filter(token_confirmacion=token)
+    )
+    if not reservas:
+        html = _pagina_confirmacion_html(
+            "Reserva no encontrada", "No encontramos ninguna reserva con ese enlace."
+        )
+        return HttpResponse(html, status=404)
+
+    cancelables = [
+        r for r in reservas if r.estado in (Reserva.Estado.PENDIENTE, Reserva.Estado.CONFIRMADA)
+    ]
+
+    if request.method == "POST":
+        if not cancelables:
+            return HttpResponse(_pagina_resultado_no_cancelable(reservas))
+        for reserva in cancelables:
+            reserva.estado = Reserva.Estado.CANCELADA
+            reserva.save(update_fields=["estado"])
+        html = _pagina_confirmacion_html("Hora cancelada", "Tu hora fue cancelada.", reservas)
+        return HttpResponse(html)
+
+    if not cancelables:
+        return HttpResponse(_pagina_resultado_no_cancelable(reservas))
+
+    form = _form_accion_html(request, reverse("reserva-cancelar", args=[token]), "Sí, cancelar esta reserva")
+    html = _pagina_confirmacion_html(
+        "Cancelar tu hora", "Revisa el detalle y cancela tu hora.", reservas, form_html=form
+    )
+    return HttpResponse(html)
+
+
+def _pagina_resultado_no_cancelable(reservas):
+    if all(r.estado == Reserva.Estado.CANCELADA for r in reservas):
+        return _pagina_confirmacion_html(
+            "Ya estaba cancelada", "Esta hora ya había sido cancelada anteriormente.", reservas
+        )
+    return _pagina_confirmacion_html(
+        "No se puede cancelar",
+        f"Esta hora no se puede cancelar (estado actual: {reservas[0].get_estado_display()}).",
+        reservas,
+    )
 
 
 class LoginView(APIView):
@@ -217,11 +388,16 @@ class ReservaViewSet(viewsets.ModelViewSet):
             if bloqueo:
                 return Response({"detail": _mensaje_bloqueo(bloqueo)}, status=status.HTTP_409_CONFLICT)
 
+        # Token compartido entre todas las reservas de este combo -- asi un
+        # solo link de email confirma/cancela toda la visita, no servicio
+        # por servicio. Ver confirmar_reserva/cancelar_reserva.
+        token = uuid.uuid4()
+
         reservas = []
         try:
             with transaction.atomic():
                 for serializer in serializers_list:
-                    reservas.append(serializer.save())
+                    reservas.append(serializer.save(token_confirmacion=token))
         except IntegrityError:
             # reservas solo tiene los guardados exitosos antes del choque,
             # asi que su longitud es el indice del serializer que fallo.
@@ -234,6 +410,16 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     f"Por favor elige otro."
                 },
                 status=status.HTTP_409_CONFLICT,
+            )
+
+        if settings.HABILITAR_CONFIRMACION_EMAIL:
+            confirm_url, cancel_url = _links_confirmacion(request, token)
+            transaction.on_commit(
+                lambda: threading.Thread(
+                    target=send_notificacion_barbero,
+                    args=(reservas, confirm_url, cancel_url),
+                    daemon=True,
+                ).start()
             )
 
         if len(reservas) == 1:
@@ -266,13 +452,24 @@ class ReservaViewSet(viewsets.ModelViewSet):
         if bloqueo:
             return Response({"detail": _mensaje_bloqueo(bloqueo)}, status=status.HTTP_409_CONFLICT)
 
+        token = uuid.uuid4()
         try:
             with transaction.atomic():
-                reserva = serializer.save()
+                reserva = serializer.save(token_confirmacion=token)
         except IntegrityError:
             return Response(
                 {"detail": "Ese horario ya fue reservado. Por favor elige otro."},
                 status=status.HTTP_409_CONFLICT,
+            )
+
+        if settings.HABILITAR_CONFIRMACION_EMAIL:
+            confirm_url, cancel_url = _links_confirmacion(request, token)
+            transaction.on_commit(
+                lambda: threading.Thread(
+                    target=send_notificacion_barbero,
+                    args=([reserva], confirm_url, cancel_url),
+                    daemon=True,
+                ).start()
             )
 
         transaction.on_commit(
