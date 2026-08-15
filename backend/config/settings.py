@@ -174,3 +174,8 @@ BARBERIA_NOMBRE = env("BARBERIA_NOMBRE", default="Barberia Demo")
 BARBERIA_SLUG = env("BARBERIA_SLUG", default="demo")
 BARBERIA_PERMITE_ELEGIR_BARBERO = env.bool("BARBERIA_PERMITE_ELEGIR_BARBERO", default=True)
 BARBERIA_COLOR_PRIMARIO = env("BARBERIA_COLOR_PRIMARIO", default="#C9A961")
+
+# Flujo de confirmacion de reserva por email (links publicos, sin login).
+# Default False: por ahora solo Igna la activa vía su .env de Railway, Veltrix
+# la deja apagada y el comportamiento de hoy no cambia en absoluto.
+HABILITAR_CONFIRMACION_EMAIL = env.bool("HABILITAR_CONFIRMACION_EMAIL", default=False)
